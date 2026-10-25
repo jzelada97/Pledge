@@ -123,6 +123,22 @@ describe("parar y resolver", () => {
     expect(code(() => buildResolveBody(escrowFixture(), STAFF, 0n))).toBe("NOT_DISPUTED");
   });
 
+  it("si el vault perdió valor, resolver reparte el saldo y nunca más de lo que hay", () => {
+    const lost = escrowFixture({ balance: 450, flags: { disputed: true, released: false, resolved: false } });
+    const sum = (d: { amount: number }[]) => d.reduce((s, x) => s + x.amount, 0);
+    // El déficit recae en la parte del inquilino; la deducción del casero se respeta.
+    const body = buildResolveBody(lost, STAFF, 1_000_000_000n);
+    expect(body.distributions).toEqual([
+      { address: TENANT, amount: 350 },
+      { address: LANDLORD, amount: 100 },
+    ]);
+    expect(sum(body.distributions)).toBe(450);
+    // Una deducción mayor que lo que queda se recorta al saldo.
+    expect(buildResolveBody(lost, STAFF, 4_800_000_000n).distributions).toEqual([{ address: LANDLORD, amount: 450 }]);
+    // Con rendimiento se sigue repartiendo el importe fondeado, no el saldo.
+    expect(sum(buildResolveBody(stopped, STAFF, 0n).distributions)).toBe(500);
+  });
+
   it("el rendimiento sobrante se reparte según la jurisdicción", () => {
     expect(buildWithdrawYieldBody(stopped, STAFF, 893n, 5000).distributions).toEqual([
       { address: TENANT, amount: 0.0000446 },
@@ -132,11 +148,31 @@ describe("parar y resolver", () => {
     expect(() => buildWithdrawYieldBody(stopped, STAFF, 1n, 10_001)).toThrow(RangeError);
     expect(code(() => buildWithdrawYieldBody(stopped, TENANT, 1n, 0))).toBe("NOT_RESOLVER");
   });
+
+  it("la comisión de plataforma sobre el rendimiento es opcional y sale antes de la jurisdicción", () => {
+    // Sin comisión (por defecto) la tesorería no aparece.
+    expect(buildWithdrawYieldBody(stopped, STAFF, 1000n, 0).distributions).toEqual([{ address: LANDLORD, amount: 0.0001 }]);
+    // 20 % a la tesorería y, del resto, la mitad al inquilino.
+    expect(buildWithdrawYieldBody(stopped, STAFF, 1000n, 5000, 2000).distributions).toEqual([
+      { address: TREASURY, amount: 0.00002 },
+      { address: TENANT, amount: 0.00004 },
+      { address: LANDLORD, amount: 0.00004 },
+    ]);
+    expect(() => buildWithdrawYieldBody(stopped, STAFF, 1n, 0, 10_001)).toThrow(RangeError);
+  });
 });
 
 describe("isContractAddress", () => {
   it("distingue passkeys (C…) de cuentas clásicas (G…)", () => {
     expect(isContractAddress(TENANT)).toBe(true);
     expect(isContractAddress(LANDLORD)).toBe(false);
+  });
+
+  it("exige el formato completo, no solo la C inicial", () => {
+    expect(isContractAddress("C")).toBe(false);
+    expect(isContractAddress("CALLE MAYOR 1")).toBe(false);
+    expect(isContractAddress(TENANT.toLowerCase())).toBe(false);
+    expect(isContractAddress(`${TENANT}A`)).toBe(false);
+    expect(isContractAddress(TENANT.slice(0, 55) + "1")).toBe(false); // 1 no es base32
   });
 });

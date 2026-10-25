@@ -14,7 +14,7 @@
 ## Mapeo (src/fianza.ts)
 - Roles v1, uno por rol: `approver` = `serviceProvider` = casero; `releaseSigner` = `receiver` = inquilino; `platformAddress` = tesorería (cobra `platformFee` **y puede actualizar el escrow**: es una cuenta de la plataforma); `disputeResolver` = staff.
 - "Aprobar devolución" = dos pasos: el casero aprueba el hito (`approve-milestone`, índice `"0"`) y el inquilino libera (`release-funds`). Al liberar se paga capital + rendimiento menos comisiones.
-- Parar = `dispute-escrow` del casero. Resolver = `resolve-dispute` repartiendo el **importe fondeado** (deducción al casero, resto al inquilino); el rendimiento que sobra se reparte con `withdraw-remaining-funds` según la jurisdicción.
+- Parar = `dispute-escrow` del casero. Resolver = `resolve-dispute` repartiendo `min(importe fondeado, saldo actual)`: con rendimiento, el importe fondeado; si el vault perdió valor, el saldo (repartir más haría fallar la resolución y bloquearía los fondos). Deducción al casero, recortada a lo que hay; el resto al inquilino, que asume el déficit como en el plan B. El rendimiento que sobra se reparte con `withdraw-remaining-funds` (`buildWithdrawYieldBody`): primero la comisión opcional de plataforma (`platformFeeBps`, 0 por defecto) y después la jurisdicción (`tenantYieldBps`).
 - `signer` del deploy: por defecto la tesorería (cuenta G de la plataforma), porque las partes pueden ser passkeys.
 
 ## Rendimiento y comisiones (src/defindex.ts)
@@ -27,6 +27,8 @@
 - Sin stop bond ni perito pagado por el bond.
 - Sin timeout del casero ni de revisión: el inquilino no puede reclamar solo.
 - Roles fijados al desplegar: el escrow se despliega cuando el inquilino acepta la invitación (hace falta su dirección).
+- **El reparto por jurisdicción solo se aplica en el camino de disputa.** En el camino normal (el casero aprueba y el inquilino libera), `release-funds` paga capital **y rendimiento** al inquilino. Eso contradice la decisión para Portugal (rendimiento al casero y 20 % para la plataforma) y la API de TW no permite evitarlo. **Decisión de equipo pendiente**, junto con la comisión del 0,3 % de TW sobre el capital.
+- **La plataforma no ingresa nada en el plan A.** Con `platformFee = 0` (la de TW se cobra sobre el capital) solo puede cobrar en `withdraw-remaining-funds` vía `platformFeeBps`, y eso solo ocurre tras una disputa. **Decisión de producto pendiente:** qué porcentaje y si compensa cobrar sobre el capital en `platformFee`.
 
 ## Comandos
 - `pnpm --filter @fianzas/trustless typecheck test`
