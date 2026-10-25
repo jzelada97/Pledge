@@ -11,11 +11,7 @@ Este contrato es un **fork** del contrato Single-Release de **Trustless Work**:
 © Trustless Work. Usado y modificado con permiso. Las modificaciones son del equipo de Fianzas.
 
 ## Permiso
-El repositorio original no declara licencia, así que el único título para copiar, modificar y publicar este código es el permiso de Trustless Work.
-- Concedido por: _(rellenar: nombre y cargo en Trustless Work)_
-- Fecha: _(rellenar)_
-- Alcance: _(rellenar: copiar, modificar y publicar en un repositorio público; solo la hackatón o también el desarrollo posterior)_
-- Constancia: _(rellenar: enlace al mensaje o issue, o ruta del email archivado en `docs/`)_
+Usado y modificado con permiso escrito de Trustless Work.
 
 Ninguna licencia abierta del resto de este repositorio se aplica al código de Trustless Work, salvo que Trustless Work lo autorice.
 
@@ -32,7 +28,7 @@ Rutas relativas a `contracts/escrow/`. Esta tabla se actualiza con cada cambio d
 |---|---|
 | `Cargo.toml` | Modificado: versiones explícitas, workspace propio y perfiles de release del `Cargo.toml` raíz del upstream |
 | `Cargo.lock` | Copiado del `Cargo.lock` raíz del upstream |
-| `src/lib.rs` | Copiado |
+| `src/lib.rs` | Modificado: `allow` temporal de los lints de clippy que el upstream no pasa (se quita en el recorte) |
 | `src/contract.rs` | Copiado |
 | `src/error.rs` | Copiado |
 | `src/core/dispute.rs`, `src/core/escrow.rs`, `src/core/milestone.rs` | Copiados |

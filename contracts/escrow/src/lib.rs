@@ -1,5 +1,18 @@
 // Derived from Trustless-Work/trustlesswork-smart-contract-stellar@1d22d0c (contracts/escrow/src/lib.rs), modified. See contracts/escrow/NOTICE.md
 #![no_std]
+// FIANZAS: temporal. Lints de estilo que el upstream no pasa con `clippy -D warnings`.
+// Se quita en el recorte del fork, que reescribe estos módulos (architecture.md § 5).
+#![allow(
+    dead_code,
+    clippy::collapsible_if,
+    clippy::needless_borrow,
+    clippy::needless_borrows_for_generic_args,
+    clippy::needless_question_mark,
+    clippy::redundant_field_names,
+    clippy::too_many_arguments,
+    clippy::type_complexity,
+    clippy::unnecessary_cast
+)]
 
 mod contract;
 mod core {
