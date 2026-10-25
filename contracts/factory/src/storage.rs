@@ -17,6 +17,7 @@ pub enum DataKey {
     NextId,
     DefaultStrategy,
     StrategyIds,
+    ConfigVersion,
     // persistent
     Strategy(Symbol),
     Escrow(u64),
@@ -79,6 +80,19 @@ pub fn paused(e: &Env) -> bool {
 
 pub fn set_paused(e: &Env, paused: bool) {
     e.storage().instance().set(&DataKey::Paused, &paused);
+}
+
+/// FAC-6: sube con cada cambio de admin que afecta a las fianzas nuevas.
+pub fn config_version(e: &Env) -> u32 {
+    get_instance(e, &DataKey::ConfigVersion).unwrap_or(0)
+}
+
+pub fn bump_config_version(e: &Env) -> Result<(), FactoryError> {
+    let next = config_version(e)
+        .checked_add(1)
+        .ok_or(FactoryError::Arithmetic)?;
+    e.storage().instance().set(&DataKey::ConfigVersion, &next);
+    Ok(())
 }
 
 /// Último id asignado (ids `1..=count`).

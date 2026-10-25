@@ -3,8 +3,9 @@
 
 [workspace]
 resolver = "2"
-# Se añaden contracts/factory y contracts/mock-vault cuando tengan Cargo.toml.
-members = ["contracts/escrow"]
+# Se añade contracts/mock-vault cuando tenga Cargo.toml.
+# El orden de build importa: la factory importa el wasm del escrow (contractimport!).
+members = ["contracts/escrow", "contracts/factory"]
 
 [workspace.package]
 version = "0.0.0"
