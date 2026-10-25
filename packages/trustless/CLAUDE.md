@@ -4,8 +4,8 @@
 
 ## API de Trustless Work
 - Base: `https://trustless-backend-production.up.railway.app` (Swagger en `/docs`). Cabecera `x-api-key`. Es una key **propia de esta API** (la de v1/v2 da 401). Va en `.env.local` (`TW_API_KEY`), nunca en el repo ni en el navegador: el cliente se usa desde el servidor (`apps/api`).
-- Cada escritura devuelve `{ unsignedTransaction }`. Lo firma la cuenta del rol y se envía con `POST /helper/send-transaction { signedXdr }`.
-- **Una passkey (C-address) no puede ser firmante en la API** (400 `invalid version byte`, issue #61), aunque sí puede tener roles. Las acciones que firma una passkey (`fund_escrow`, `approve_milestone`, `release_funds`, `dispute_escrow`) se construyen contra el contrato y van por el Relayer de `packages/wallet` (plan A, `externalEscrows` y `trustless.feeAddress`).
+- Cada escritura devuelve `{ unsignedTransaction }`: una transacción cuya **cuenta origen es el firmante del rol**. La firma esa cuenta y se envía con `POST /helper/send-transaction { signedXdr }`, que **no patrocina**: la comisión la paga la cuenta origen.
+- **Una passkey (C-address) no puede ser firmante en la API** (400 `invalid version byte`, issue #61), aunque sí puede tener roles: solo firma *auth entries*, no el sobre. Las acciones que firma una passkey (`fund_escrow`, `approve_milestone`, `release_funds`, `dispute_escrow`) se construyen contra el contrato y van, patrocinadas, por el Relayer de `packages/wallet` (`externalEscrows` y `trustless.feeAddress`, #66).
 - Lecturas con arrays: `?contractIds[]=C…` / `?addresses[]=C…`, también con un solo valor.
 - Errores (NestJS `{ statusCode, message }`) → `TrustlessApiError`.
 - Importes en **decimales** (`100.5`): convierte siempre con `units.ts` desde la unidad mínima (7 decimales). Nunca hagas cuentas con `number`.
@@ -23,6 +23,7 @@
 - El saldo crece en cada ledger; justo después de fondear puede quedar 1 stroop por debajo del importe. No compares `balance == amount`.
 
 ## Huecos frente al plan B (no los tapes aquí)
+- Las acciones de una passkey no pueden ir por la API de TW: hay que construirlas contra el contrato (#61, #66).
 - Sin stop bond ni perito pagado por el bond.
 - Sin timeout del casero ni de revisión: el inquilino no puede reclamar solo.
 - Roles fijados al desplegar: el escrow se despliega cuando el inquilino acepta la invitación (hace falta su dirección).

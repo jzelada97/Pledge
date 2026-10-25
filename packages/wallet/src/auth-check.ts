@@ -1,7 +1,8 @@
 // "Lo que ves es lo que firmas" (security WEB-3 v2). Antes de pedir la passkey se comprueba que la
-// transacción llama a nuestra factory o a un escrow registrado, con una función permitida, y que la
-// entrada de auth del firmante autoriza exactamente esa llamada y las subinvocaciones esperadas.
-import { scValToNative, xdr } from "@stellar/stellar-sdk";
+// transacción llama a nuestra factory, a un escrow registrado o (plan A) a un escrow de Trustless Work,
+// con una función permitida, y que la entrada de auth del firmante autoriza exactamente esa llamada y
+// las subinvocaciones esperadas.
+import { Address, scValToNative, xdr } from "@stellar/stellar-sdk";
 import { WalletError } from "./errors";
 import type { ContractsConfig } from "./types";
 import {
@@ -9,6 +10,7 @@ import {
   FACTORY_USER_FUNCTIONS,
   PERMISSIONLESS_FUNCTIONS,
   TRANSFER_FUNCTIONS,
+  TRUSTLESS_USER_FUNCTIONS,
   contractOf,
   credentialAddress,
   fnNameOf,
@@ -35,6 +37,27 @@ function fundAmount(args: xdr.InvokeContractArgs): bigint {
   return amount;
 }
 
+// Escrow de TW: fund_escrow(signer, expected_escrow, amount) transfiere `amount` (tercer argumento).
+function trustlessFundAmount(args: xdr.InvokeContractArgs): bigint {
+  const raw = args.args()[2];
+  const amount = raw ? scValToNative(raw) : undefined;
+  if (typeof amount !== "bigint" || amount <= 0n) mismatch("fund_escrow: importe no válido");
+  return amount;
+}
+
+type Target = "factory" | "fianza" | "trustless";
+
+async function targetOf(contract: string, fn: string, cfg: ContractsConfig): Promise<Target> {
+  const allowed = (list: readonly string[]) => list.includes(fn);
+  if (contract === cfg.factory) {
+    if (!allowed(FACTORY_USER_FUNCTIONS)) mismatch(`factory.${fn} no permitida`);
+    return "factory";
+  }
+  if (allowed(ESCROW_USER_FUNCTIONS) && (await cfg.isRegisteredEscrow(contract))) return "fianza";
+  if (cfg.trustless && allowed(TRUSTLESS_USER_FUNCTIONS) && (await cfg.trustless.isEscrow(contract))) return "trustless";
+  return mismatch(`${fn} sobre un contrato no reconocido o con una función no permitida`);
+}
+
 /**
  * Verifica la invocación que va a firmar `signer`. Devuelve su auth entry, o null si la función no
  * necesita firma (claims sin permisos). Lanza WalletError("AUTH_MISMATCH") si algo no cuadra.
@@ -50,18 +73,13 @@ export async function verifyAuthTree(
   const contract = contractOf(args);
   const fn = fnNameOf(args);
 
-  if (contract === cfg.factory) {
-    if (!(FACTORY_USER_FUNCTIONS as readonly string[]).includes(fn)) mismatch(`factory.${fn} no permitida`);
-  } else {
-    if (!(ESCROW_USER_FUNCTIONS as readonly string[]).includes(fn)) mismatch(`escrow.${fn} no permitida`);
-    if (!(await cfg.isRegisteredEscrow(contract))) mismatch("el contrato no es un escrow de la factory");
-  }
+  const target = await targetOf(contract, fn, cfg);
 
   // Ninguna entrada con credenciales de la cuenta origen (las firmaría el Relayer).
   if (inv.auth.some((e) => credentialAddress(e) === null)) mismatch("credenciales no admitidas");
 
   const mine = inv.auth.filter((e) => credentialAddress(e) === signer);
-  if (PERMISSIONLESS_FUNCTIONS.has(fn)) {
+  if (target === "fianza" && PERMISSIONLESS_FUNCTIONS.has(fn)) {
     if (mine.length !== 0) mismatch(`${fn} no necesita firma`);
     return null;
   }
@@ -74,8 +92,19 @@ export async function verifyAuthTree(
   }
 
   const subs = root.subInvocations();
+  if (target === "trustless" && fn === "release_funds") {
+    // La comisión de TW va a una dirección que pasa el llamante: tiene que ser la configurada.
+    const fee = args.args()[1];
+    const feeTo = fee?.switch().name === "scvAddress" ? Address.fromScAddress(fee.address()).toString() : null;
+    if (feeTo !== cfg.trustless!.feeAddress) mismatch("release_funds con una dirección de comisión que no es la de TW");
+  }
   if (TRANSFER_FUNCTIONS.has(fn)) {
-    const amount = fn === "fund_escrow" ? fundAmount(args) : opts.expectedTransferAmount;
+    const amount =
+      fn !== "fund_escrow"
+        ? opts.expectedTransferAmount
+        : target === "trustless"
+          ? trustlessFundAmount(args)
+          : fundAmount(args);
     if (amount === undefined) mismatch("stop necesita expectedTransferAmount (terms.stop_bond)");
     if (subs.length !== 1 || !isExactTransfer(subs[0], cfg.token, signer, contract, amount)) {
       mismatch(`${fn} debe autorizar solo token.transfer(firmante, escrow, ${amount})`);

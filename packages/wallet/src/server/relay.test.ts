@@ -181,6 +181,33 @@ describe("createRelayHandler", () => {
     expect([res.status, await codeOf(res)]).toEqual([429, "RATE_LIMITED"]);
   });
 
+  it("patrocina escrows de TW por su wasm, solo con sus funciones de usuario", async () => {
+    const TW_WASM = "33".repeat(32);
+    const twEscrow = randomContract();
+    wasm.set(twEscrow, TW_WASM);
+    const h = createRelayHandler({
+      policy: {
+        ...policy,
+        externalEscrows: {
+          wasmHashes: [TW_WASM],
+          functions: ["fund_escrow", "approve_milestone", "release_funds", "dispute_escrow"],
+        },
+      },
+      relayerUrl: "https://channels.example/testnet",
+      apiKey: "k",
+      rpcUrl: "http://unused",
+      networkPassphrase: "Test SDF Network ; September 2015",
+      chain,
+      fetch: relayer as unknown as typeof fetch,
+    });
+    const approve = invoke(twEscrow, "approve_milestone", []);
+    expect((await h(request(payload(hostFn(approve), [entry(tenant, call(approve))])))).status).toBe(200);
+    const resolve = invoke(twEscrow, "resolve_dispute", []);
+    expect((await h(request(payload(hostFn(resolve), [entry(tenant, call(resolve))])))).status).toBe(403);
+    // Sin externalEscrows, el mismo escrow no pasa.
+    expect((await handler()(request(payload(hostFn(approve), [entry(tenant, call(approve))])))).status).toBe(403);
+  });
+
   it("los claims pasan sin auth; el resto necesita firma", async () => {
     const claim = invoke(escrow, "claim_after_timeout", []);
     expect((await handler()(request(payload(hostFn(claim), [])))).status).toBe(200);

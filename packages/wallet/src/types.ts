@@ -45,6 +45,13 @@ export interface ContractsConfig {
   token: string; // deployments.token (SAC de USDC)
   // true si `addr` es un escrow registrado en la factory (factory.id_of(addr) no da NotFound).
   isRegisteredEscrow(addr: string): Promise<boolean>;
+  // Plan A: escrows single-release con rendimiento de Trustless Work (API v1 + vault).
+  trustless?: {
+    // true si `addr` es un escrow de TW que reconocemos (p. ej. su wasm está en la lista permitida).
+    isEscrow(addr: string): Promise<boolean>;
+    // Dirección que cobra la comisión de TW: release_funds la recibe como argumento y se comprueba.
+    feeAddress: string;
+  };
 }
 
 export interface WalletConfig extends ContractsConfig {
