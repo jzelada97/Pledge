@@ -4,7 +4,7 @@
 > Contexto revisado: `CLAUDE.md`, `docs/INTERFACES.md` (versión actual, anterior al diff de G1), `contracts/escrow/CLAUDE.md`, los `CLAUDE.md` de cada área, `harness/team.json`, `.claude/settings.json`, `.claude/hooks/*.mjs`, `.githooks/*`, `scripts/harness/*.mjs`, `.github/workflows/ci.yml`, `.github/CODEOWNERS`, `.gitignore` y `.env.example`.
 > El repo solo contiene el harness. No hay código de producto que auditar. La búsqueda de secretos (`S[A-Z2-7]{55}`, claves privadas PEM y API keys) no encontró nada.
 >
-> **Actualización del 2026-10-25:** las secciones 1–12 revisan la arquitectura anterior (escrow propio singleton). La **sección 13** revisa la arquitectura v2 (fork de Trustless Work + `FianzaFactory`) y **prevalece** donde choquen. La tabla 13.1 traduce los nombres antiguos a los nuevos.
+> **Actualización del 2026-10-25:** las secciones 1–12 revisan la arquitectura anterior (escrow propio singleton). La **sección 13** revisa la arquitectura v2 (escrow propio por fianza + `FianzaFactory`) y **prevalece** donde choquen. La tabla 13.1 traduce los nombres antiguos a los nuevos.
 
 **Cómo leer las etiquetas**
 - **[H]**: obligatorio en la hackatón (testnet). Sin esto no se llega a G3/G4 o la demo es frágil.
@@ -989,10 +989,10 @@ pub struct Deposit {
 
 ---
 
-## 13. Revisión de la arquitectura v2 (fork de Trustless Work + `FianzaFactory`)
+## 13. Revisión de la arquitectura v2 (escrow propio por fianza + `FianzaFactory`)
 
 > Revisión del 2026-10-25 sobre `.kiro/pipeline/architecture.md` (v2) y `docs/INTERFACES.md` (borrador v2).
-> Verificado contra el upstream: la rama `single-release-develop-v2` de `Trustless-Work/trustlesswork-smart-contract-stellar` apunta a `1d22d0c1b9c5788f4fd7184e42024bbe10303756` (2026-09-29, PR #122, `soroban-sdk 28.0.0`), el repositorio no declara licencia (`license: null`) y la lista de entrypoints públicos de `contracts/escrow/src/contract.rs` en ese commit es la que recoge N-2.
+> **Decisión del equipo (2026-10-25):** el escrow se escribe **desde cero**, sin copiar código de Trustless Work. Las interfaces de la arquitectura v2 se mantienen; desaparecen el fork, el `NOTICE` de TW, el fee de TW (`tw_fee_bps`, `tw_fee_receiver`, `to_tw`) y `get_roles()`. Los riesgos ligados al fork (R-8, R-14) quedan cerrados.
 > **Esta sección prevalece sobre las secciones 1–12 donde choquen.** Todo lo que no se menciona aquí sigue vigente con la traducción de 13.1.
 
 ### 13.1 Equivalencias con las secciones anteriores
@@ -1011,26 +1011,26 @@ pub struct Deposit {
 | `yield-adapter` entre escrow y vault | Llamada directa al vault de DeFindex. CT-9 se aplica a `mock-vault` |
 | `claim_after_review_timeout` [M] | **[H]** (cierra CT-6 y OC-5 en la hackatón) |
 
-**Nivel de riesgo:** sin cambios (ALTO para el diseño, MEDIO para la hackatón). Un contrato por fianza elimina el *honeypot* del singleton (6.1 #12 baja a **Baja**), pero aparecen superficies nuevas: el admin de la factory, las direcciones dinámicas, las llamadas escrow → factory y un fork sin auditar.
+**Nivel de riesgo:** sin cambios (ALTO para el diseño, MEDIO para la hackatón). Un contrato por fianza elimina el *honeypot* del singleton (6.1 #12 baja a **Baja**), pero aparecen superficies nuevas: el admin de la factory, las direcciones dinámicas, las llamadas escrow → factory y dos contratos propios sin auditar.
 
 ### 13.2 Respuesta a los riesgos R-1…R-16 de la arquitectura
 
 | # | Veredicto | Requisito o acción | Cuándo |
 |---|---|---|---|
-| R-1 Fork sin auditar | Aceptado en la hackatón | Cabecera de origen y `// FIANZAS:` en cada cambio, para que el diff con el upstream sea revisable. Tests de las secciones 5 y 12.9 adaptados más los de 13.5. Nunca citar la auditoría de TW (4.2 #12) | H / auditoría del fork y la factory: M |
+| R-1 Código sin auditar | Aceptado en la hackatón | Escrow y factory son código propio. Tests de las secciones 5 y 12.9 adaptados más los de 13.5. Nunca insinuar que el contrato está auditado (4.2 #12) | H / auditoría del escrow y la factory: M |
 | R-2 Poder del admin de la factory | Aceptado con controles | Eventos `f_wasm`/`f_strategy`/`f_config`, listas permitidas en `deployments` y **WEB-14** (13.4): el front compara los `Terms` con `deployments` antes de dejar fondear | H / timelock y multisig: M |
 | R-3 Instancias falsas del escrow | Correcto | El enlace lleva el `id`; la dirección sale **solo** de `factory.escrow_of(id)` (WEB-2). El Relayer comprueba wasm **y** registro. Test `register_tenant_rejects_impostor` | H |
 | R-4 Callback `register_tenant` | Correcto | `escrow_of(id).require_auth()` solo pasa si ese escrow es el **invocador directo**. Ningún argumento lleva la dirección del escrow | H |
 | R-5 Confianza en el vault de DeFindex | Aceptado en testnet | `scripts/` verifica wasm oficial, una sola estrategia, managers y fees, y la UI lo divulga. Antes de mainnet hay que **verificar en el código de DeFindex** a dónde pueden mover fondos `rescue` y `upgrade` | H (script) / M |
 | R-6 Iliquidez o pérdida en Blend | Aceptado | Mensaje claro y reintento (WEB-13); tests `illiquid_vault_reverts_and_keeps_state` y `claim_retry_after_liquidity_returns` sobre `fund_escrow`/`approve_release`/`claim_after_timeout` | H / pago parcial u `Owed`: M |
 | R-7 Suplantación de eventos | Correcto | El feed solo acepta eventos cuyo `contractId` sea la factory o un `escrow_of(id)`; `id_of` se cachea | H |
-| R-8 Destino del fee de TW | Correcto | Con `tw_fee_bps = 0` no hay transferencia (CT-1: nunca se transfiere 0). Si se activa: receptor obligatorio en el constructor y trustline verificada por `fund.mjs` | H |
+| R-8 Destino del fee de TW | **Cerrado** | Sin fork no hay fee de TW: el único fee es el de plataforma, a `terms.treasury` | — |
 | R-9 Snapshot del staff | Aceptado | Rotar una clave de staff comprometida **no** protege las fianzas existentes. La salida es `review_timeout` (ahora [H]) y 1–3 resolvers | H / staff multisig: M |
 | R-10 Guard de reentrada eliminado | Aprobado | Soroban impide volver a entrar en un contrato que ya está en la pila de llamadas. Se mantiene el orden de CT-1 (escribir `Settled` antes de pagar) | H |
 | R-11 Auth del vault | Correcto | Fragmento 1 de 4.1 con `vault.balance(escrow)` en lugar de `shares_of`, y `deposit(..., amounts_min = [amount], ...)`. Tests de `vault_auth.rs` sobre `fund_escrow`, sin `mock_all_auths` | H |
 | R-12 Presupuesto | Correcto | Medir en el spike el coste de `create_fianza` (despliegue) y de `fund_escrow` con `invest = true`. Ver N-3 | H |
 | R-13 Bond | Correcto | Sección 12 completa. Invariante por instancia: `balance(escrow) == bond_held + (amount si NoYield y no liquidada) + donaciones` | H |
-| R-14 Licencia y permiso | **Alta (legal) y urgente** | El repositorio **ya es público**: empujar una rama con código de TW lo publica aunque no se fusione. **No se empuja código copiado hasta que `NOTICE.md` registre un permiso que cubra la publicación** (o se trabaja en local hasta tenerlo) | H, antes del primer push del fork |
+| R-14 Licencia y permiso | **Cerrado** | No se copia código de Trustless Work. Como el repositorio es público, tampoco se pega código de terceros sin licencia compatible | — |
 | R-15 Regulación | Aceptado (fuera de la hackatón) | Ningún texto dice "sin riesgo" ni "garantizado"; el rendimiento es "variable". MiCA art. 50 y custodia quedan para la revisión legal | H (textos) / M |
 | R-16 Registro de estrategias y RWA | Correcto, con un matiz | Ver N-4 sobre `asset_name`. Una estrategia desactivada no bloquea salidas (test `disabled_strategy_blocks_fund_not_exits`) | H |
 
@@ -1039,7 +1039,7 @@ pub struct Deposit {
 | # | Problema | Severidad | Recomendación | Cuándo |
 |---|---|---|---|---|
 | N-1 | Si `register_tenant` o `funding_allowed` fallan dentro de `fund_escrow`, la transacción revierte con un error **de la factory** (`Error(Contract, #8)` es `NotEscrow` en la factory y `VaultError` en el escrow). El cliente traduciría mal el error. | **Media** | El escrow llama a la factory con `try_` y convierte cualquier error en `EscrowError::FactoryCall = 24`. `funding_allowed == false` sigue siendo `Paused` | H [G1] |
-| N-2 | **Superficie del wasm.** El upstream en `1d22d0c` expone `tw_new_single_release_escrow`, `initialize_escrow`, `update_escrow`, `manage_milestones`, `release_funds`, `change_milestone_status`, `approve_milestones`, `approve_and_release_milestones`, `resolve_dispute` (reparto libre con `Map`), `dispute_escrow`, `withdraw_remaining_funds`, `extend_contract_ttl(admin, …)`, `get_escrow_by_contract_id` y `get_multiple_escrow_balances`. Si alguna sobrevive al recorte, devuelve poderes al admin o permite pagar a terceros. Además, la caché del Relayer por dirección (arquitectura § 8.2) solo es válida porque el escrow no tiene upgrade. | **Alta** | Regla: el wasm del escrow exporta **exactamente** las funciones de INTERFACES § 2. Comprobación automática en `scripts/` o en la CI: `stellar contract info interface --wasm <escrow.wasm>` comparado con la lista. Ninguna función de upgrade | H [G1] |
+| N-2 | **Superficie del wasm.** Una función de más (de admin, de rescate, de upgrade o de reparto libre a terceros), aunque sea de depuración, devuelve poderes sobre el dinero. Además, la caché del Relayer por dirección (arquitectura § 8.2) solo es válida porque el escrow no tiene upgrade. | **Alta** | Regla: el wasm del escrow exporta **exactamente** las funciones de INTERFACES § 2. Comprobación automática en `scripts/` o en la CI: `stellar contract info interface --wasm <escrow.wasm>` comparado con la lista | H [G1] |
 | N-3 | El Relayer paga los **despliegues** de `create_fianza`, que cuestan más que una invocación, y `create_fianzas_batch` despliega hasta 10 contratos por petición. Es la forma más barata de agotar el cupo de Channels (V10). | **Media** | En la `RelayPolicy`: `create_fianzas_batch` **fuera** de `fixedContracts` en la demo (se hace por script si hace falta) y un tope propio de `create_fianza` por dirección de credencial (por ejemplo, 5 por hora) además de SRV-6 | H [G1 § 8] |
 | N-4 | `asset_name` se presenta como antifalsificación, pero `name()` solo es fiable en un SAC: un contrato SEP-41 cualquiera puede devolver `"USDC:G…"`. El control real es `asset == config.token`. | **Baja** | Corregir el comentario en INTERFACES. `deploy.mjs` comprueba que `config.token` es el SAC del emisor oficial (`Asset(code, issuer).contractId(passphrase)`) | H |
 | N-5 | Con `NoYield`, el principal, el bond y cualquier donación comparten el saldo del escrow. Si `settle` usara `balance(escrow)` como `total`, el inquilino cobraría el bond o las donaciones. | **Media** | `NoYield` ⇒ `total = terms.amount`, **nunca** el saldo. El bond se paga solo desde `bond_held`. Test `noyield_ignores_donation_and_bond` | H |
@@ -1063,14 +1063,14 @@ Sustituyen a los de la sección 3 donde choquen.
   - `claim_after_timeout`, `claim_after_review_timeout` y `extend_contract_ttl`: ninguna.
 - **[AUTHZ-1 v2] [H]** Ninguna función cambia `Terms` después del constructor. El admin de la factory solo afecta a fianzas **nuevas**. El staff solo puede deducir hasta `amount` a favor de `terms.landlord`, y el bond solo va a `terms.landlord` o `terms.treasury`.
 - **[AUTHZ-2 v2] [H]** La pausa vive en la factory y solo bloquea `create_*` y `fund_escrow`. Nunca bloquea `cancel`, `approve_release`, `stop`, `assign_expert`, `record_report`, `resolve`, los *claims* ni `extend_contract_ttl`. **Las salidas del escrow no llaman a la factory.**
-- **[AUTHZ-4 v2] [H]** `InvalidParty` en la factory (`create_fianza`) y en el escrow (`fund_escrow`), con el conjunto `{staff/dispute_resolvers, treasury, factory, el propio escrow, vault, token, tw_fee_receiver}`.
+- **[AUTHZ-4 v2] [H]** `InvalidParty` en la factory (`create_fianza`) y en el escrow (`fund_escrow`), con el conjunto `{staff/dispute_resolvers, treasury, factory, el propio escrow, vault, token}`.
 - **[IV-1/IV-2 v2] [H]** Las validaciones de importe, plazo, bps y vinculación se hacen en `create_fianza` (con su error tipado) y se repiten en el constructor del escrow como defensa en profundidad (`panic_with_error!`).
 - **[CT-6 v2] [H]** `claim_after_review_timeout` entra en la hackatón con bordes complementarios a `resolve` (`now ≤ review_deadline` frente a `now > review_deadline`).
-- **[CT-14 v2] [M]** Sustituye al requisito del singleton: tope de TVL por estrategia (`max_tvl`), auditoría del fork y de la factory, y timelock y multisig del admin.
+- **[CT-14 v2] [M]** Sustituye al requisito del singleton: tope de TVL por estrategia (`max_tvl`), auditoría del escrow y de la factory, y timelock y multisig del admin.
 - **[SRV-2/SRV-5 v2] [H]** La lista blanca es la `RelayPolicy` de INTERFACES § 8 (dirección fija de la factory más escrows por wasm hash **y** registro), con N-3.
 - **[WEB-3 v2] [H]** La raíz del árbol de auth es la factory o un escrow con `factory.id_of(addr)` válido. Subinvocaciones esperadas: ninguna, salvo `fund_escrow` (`token.transfer(tenant, escrow, terms.amount)`) y `stop` (`token.transfer(landlord, escrow, terms.stop_bond)`).
 - **[WEB-11 v2] [H]** La pantalla de aceptación resuelve la dirección con `factory.escrow_of(id)` y muestra importe, `end_ts`, `timeout_at`, `review_timeout_secs`, `tenant_yield_bps`, `platform_fee_bps`, `stop_bond`, la estrategia con su `RiskTier` y quién resuelve, leyéndolo **solo** de `get_terms()`.
-- **[WEB-14] [H] (nuevo)** Antes de pedir la passkey para `fund_escrow`, el front comprueba que `terms.factory == deployments.factory`, `terms.treasury == deployments.treasury`, `terms.dispute_resolvers ⊆ deployments.staff`, `terms.strategy.vault` (si existe) está en `deployments.strategies` y `terms.tw_fee_bps == deployments.twFeeBps`. Si algo no coincide, no deja fondear y muestra "Estas condiciones no coinciden con las de la plataforma".
+- **[WEB-14] [H] (nuevo)** Antes de pedir la passkey para `fund_escrow`, el front comprueba que `terms.factory == deployments.factory`, `terms.treasury == deployments.treasury`, `terms.dispute_resolvers ⊆ deployments.staff`, `terms.strategy.vault` (si existe) está en `deployments.strategies` y `terms.platform_fee_bps == deployments.platformFeeBps`. Si algo no coincide, no deja fondear y muestra "Estas condiciones no coinciden con las de la plataforma".
 
 ### 13.5 Tests nuevos
 
@@ -1108,7 +1108,6 @@ Prioridad [H] salvo indicación. Se suman a las secciones 5 y 12.9, que se adapt
 | `review_timeout_returns_bond_and_principal` | `claim_after_review_timeout` → inquilino con deducción 0, bond al casero, `stop_justified == None` |
 | `resolver_not_in_terms_rejected` | Un staff añadido con `set_config` **después** de crear la fianza intenta `assign_expert` → `NotResolver` |
 | `quorum_with_contract_accounts` | Casero e inquilino como cuentas contrato con `__check_auth` real: liquida solo en la segunda aprobación; la misma parte dos veces → `AlreadyApproved` |
-| `tw_fee_matrix` | `tw_fee_bps ∈ {0, 30}`; con `30` y sin receptor, el constructor falla; con `0` no hay transferencia al receptor |
 
 **Comprobación fuera de `cargo test`:** `scripts/` (P2) compara `stellar contract info interface --wasm <escrow.wasm>` con la lista de INTERFACES § 2 y falla si sobra o falta alguna función (N-2). `deploy.mjs` verifica el hash del wasm (N-8) y el SAC del token (N-4).
 
@@ -1128,7 +1127,7 @@ Aplicados en el mismo PR que esta sección:
 
 ### 13.7 Notas por rol
 
-- **P1:** N-1, N-2 (recorte completo del upstream), N-5, N-7 y N-8 en los tests de la factory. Los tests de 13.5. **R-14: no empujar código copiado de TW hasta tener el permiso en `NOTICE.md`.**
-- **P2:** comprobación de la superficie del wasm (N-2), SAC del token (N-4) y hash del wasm (N-8) en `scripts/`; trustlines de `treasury` y del receptor del fee de TW; verificación off-chain de cada estrategia antes de `add_strategy`.
+- **P1:** N-1, N-2 (ninguna función fuera de INTERFACES § 2), N-5, N-7 y N-8 en los tests de la factory. Los tests de 13.5.
+- **P2:** comprobación de la superficie del wasm (N-2), SAC del token (N-4) y hash del wasm (N-8) en `scripts/`; trustline de `treasury`; verificación off-chain de cada estrategia antes de `add_strategy`.
 - **P3:** `RelayPolicy` con N-3, verificación de wasm **y** registro con caché por dirección, WEB-3 v2 y los códigos de error de § 8.
 - **P4:** WEB-11 v2 y WEB-14 en la aceptación, feed filtrado por `contractId`, texto para `FactoryCall` ("No se ha podido registrar la fianza. Inténtalo de nuevo") y la estrategia con su nivel de riesgo y su APY "variable".
