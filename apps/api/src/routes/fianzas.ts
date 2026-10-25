@@ -23,6 +23,22 @@ export interface StrategyInfo {
   updatedAt: string;
 }
 
+// factory.config() tal como lo decodifica scValToNative (INTERFACES § 3, GlobalConfig).
+interface GlobalConfigRaw {
+  token: string;
+  treasury: string;
+  staff: string[];
+  platform_fee_bps: number;
+  tw_fee_bps: number;
+  tw_fee_receiver?: string | null;
+  timeout_secs: bigint;
+  review_timeout_secs: bigint;
+  stop_bond_min: bigint;
+  stop_bond_bps: number;
+  tenant_yield_bps: number;
+  vault_manager?: string | null;
+}
+
 const PRICE_TTL = 60_000;
 const CONFIG_TTL = 5_000;
 
@@ -45,18 +61,41 @@ export function fianzasRoutes(cfg: ApiConfig, chain: Chain, cache: TtlCache) {
         twFeeBps: d.twFeeBps,
         twFeeReceiver: d.twFeeReceiver,
         tenantYieldBps: d.tenantYieldBps,
+        configVersion: null,
         network: d.network,
       });
     }
     const factory = d.factory;
-    const [config, paused, wasm] = await cache.get(`config:${factory}`, CONFIG_TTL, () =>
+    const [config, paused, wasm, version] = await cache.get(`config:${factory}`, CONFIG_TTL, () =>
       Promise.all([
-        chain.read<Record<string, unknown>>(factory, "config"),
+        chain.read<GlobalConfigRaw>(factory, "config"),
         chain.read<boolean>(factory, "paused"),
         chain.read<Uint8Array>(factory, "escrow_wasm_hash"),
+        chain.read<number>(factory, "config_version"),
       ]),
     );
-    return c.json({ source: "chain", factory, paused, escrowWasmHash: Buffer.from(wasm).toString("hex"), ...config });
+    // GlobalConfig llega en snake_case y con u64/i128 como BigInt: misma forma que la rama de
+    // deployments, con los importes en string (stroops) para no perder precisión en JSON.
+    return c.json({
+      source: "chain",
+      factory,
+      paused,
+      escrowWasmHash: Buffer.from(wasm).toString("hex"),
+      token: config.token,
+      treasury: config.treasury,
+      staff: config.staff,
+      platformFeeBps: Number(config.platform_fee_bps),
+      twFeeBps: Number(config.tw_fee_bps),
+      twFeeReceiver: config.tw_fee_receiver ?? null,
+      tenantYieldBps: Number(config.tenant_yield_bps),
+      timeoutSecs: Number(config.timeout_secs),
+      reviewTimeoutSecs: Number(config.review_timeout_secs),
+      stopBondMin: config.stop_bond_min.toString(),
+      stopBondBps: Number(config.stop_bond_bps),
+      vaultManager: config.vault_manager ?? null,
+      configVersion: Number(version), // FAC-6: el casero firma esta versión en create_fianza
+      network: d.network,
+    });
   });
 
   async function strategyInfo(s: (typeof d.strategies)[number]): Promise<StrategyInfo> {
@@ -69,7 +108,9 @@ export function fianzasRoutes(cfg: ApiConfig, chain: Chain, cache: TtlCache) {
           chain.read<[number, number]>(vault, "get_fees"),
           chain.read<bigint[]>(vault, "get_asset_amounts_per_shares", [nativeToScVal(STROOPS, { type: "i128" })]),
         ]);
-        return [f, toDecimal(amounts[0])] as [[number, number], string];
+        // Un vault sin shares emitidas devuelve 0: no hay precio todavía (null), no "vale 0".
+        const perShare = amounts[0] ?? 0n;
+        return [f, perShare > 0n ? toDecimal(perShare) : null] as [[number, number], string | null];
       });
     }
     return {

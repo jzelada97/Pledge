@@ -4,11 +4,30 @@ import { deployments, loadConfigFromEnv } from "./config";
 import type { Chain } from "./chain";
 import { createApiClient, ApiError } from "./client";
 
-// Cadena falsa: ninguna prueba toca la RPC.
+// Cadena falsa: ninguna prueba toca la RPC. `config` imita lo que devuelve scValToNative.
 const fakeChain: Chain = {
   async read(contractId, fn) {
     if (fn === "get_fees") return [100, 2000] as never;
     if (fn === "get_asset_amounts_per_shares") return [10_000_240n] as never;
+    if (fn === "config") {
+      return {
+        token: deployments.token,
+        treasury: deployments.treasury,
+        staff: deployments.staff,
+        platform_fee_bps: 2000,
+        tw_fee_bps: 0,
+        tw_fee_receiver: undefined,
+        timeout_secs: 120n,
+        review_timeout_secs: 300n,
+        stop_bond_min: 100_000_000n,
+        stop_bond_bps: 500,
+        tenant_yield_bps: 0,
+        vault_manager: undefined,
+      } as never;
+    }
+    if (fn === "paused") return false as never;
+    if (fn === "escrow_wasm_hash") return new Uint8Array(32).fill(0xab) as never;
+    if (fn === "config_version") return 7 as never;
     throw new Error(`lectura inesperada ${contractId}.${fn}`);
   },
   async send() {
@@ -71,11 +90,28 @@ describe("esqueleto de la API", () => {
   });
 
   it("config sale de deployments mientras no hay factory", async () => {
-    const b = await json(await app.request("/api/fianzas/v1/config"));
+    const noFactory = createApp(loadConfigFromEnv({}, { ...deployments, factory: null }), { chain: fakeChain, now: () => 0 });
+    const b = await json(await noFactory.request("/api/fianzas/v1/config"));
     expect(b.source).toBe("deployments");
     expect(b.platformFeeBps).toBe(2000);
     expect(b.tenantYieldBps).toBe(0);
     expect(b.factory).toBeNull();
+    expect(b.configVersion).toBeNull();
+  });
+
+  it("config de la factory se serializa sin BigInt y con la misma forma", async () => {
+    const res = await app.request("/api/fianzas/v1/config");
+    expect(res.status).toBe(200);
+    const b = await json(res);
+    expect(b.source).toBe("chain");
+    expect(b.factory).toBe(deployments.factory);
+    expect(b.paused).toBe(false);
+    expect(b.escrowWasmHash).toBe("ab".repeat(32));
+    expect(b.platformFeeBps).toBe(2000);
+    expect(b.twFeeReceiver).toBeNull();
+    expect(b.timeoutSecs).toBe(120);
+    expect(b.stopBondMin).toBe("100000000");
+    expect(b.configVersion).toBe(7);
   });
 
   it("strategies lee comisiones y precio por share del vault", async () => {

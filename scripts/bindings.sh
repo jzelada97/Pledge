@@ -24,6 +24,8 @@ if (( ${#wasms[@]} == 0 )); then
 fi
 
 mkdir -p "$OUT"
+# Un solo paquete del workspace (@fianzas/bindings) con un export por contrato. Las dependencias
+# son las que importa el código generado, con la misma versión del SDK que wallet y api.
 cat > "$OUT/package.json" <<'JSON'
 {
   "name": "@fianzas/bindings",
@@ -31,7 +33,32 @@ cat > "$OUT/package.json" <<'JSON'
   "private": true,
   "type": "module",
   "description": "Bindings TypeScript generados por scripts/bindings.sh. NO EDITAR A MANO.",
-  "exports": {}
+  "exports": {},
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "16.4.1",
+    "buffer": "6.0.3"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}
+JSON
+cat > "$OUT/tsconfig.json" <<'JSON'
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "esnext"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true
+  },
+  "include": ["*/src/**/*.ts"]
 }
 JSON
 
@@ -44,6 +71,8 @@ for wasm in "${wasms[@]}"; do
     --output-dir "$OUT/$name" \
     --overwrite \
     --network "$NETWORK" >/dev/null
+  # La CLI genera un paquete npm suelto (dist/, TypeScript propio); aquí solo se usa src/.
+  rm -f "$OUT/$name/package.json" "$OUT/$name/tsconfig.json" "$OUT/$name/README.md" "$OUT/$name/.gitignore"
   # Registra el export "./<crate>" → src/index.ts del paquete generado.
   node -e '
     const fs = require("fs"); const p = process.argv[1]; const name = process.argv[2];
