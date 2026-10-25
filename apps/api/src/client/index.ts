@@ -17,6 +17,13 @@ export interface ConfigInfo {
   twFeeBps: number;
   twFeeReceiver: string | null;
   tenantYieldBps: number;
+  configVersion: number | null; // null mientras no hay factory; FianzaParams.expected_config_version
+  // Solo con source "chain":
+  timeoutSecs?: number;
+  reviewTimeoutSecs?: number;
+  stopBondMin?: string; // stroops
+  stopBondBps?: number;
+  vaultManager?: string | null;
   network?: string;
   [k: string]: unknown;
 }
