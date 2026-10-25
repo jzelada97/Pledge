@@ -3,16 +3,19 @@
 // despliegue) y `fund_escrow` pasa a un único fondeo del inquilino por el importe exacto, con
 // invitación y `expected_terms`. Se eliminan `change_escrow_properties`, `manage_milestones`,
 // `get_multiple_escrow_balances` y `get_escrow_by_contract_id` (pasan a la factory).
-// `release_funds_execute` se moverá a `core/settle.rs`.
+// `release_funds_execute` pasa a `core/settle.rs`. Se añaden las lecturas de INTERFACES § 2.
 use soroban_sdk::{
     token::Client as TokenClient, vec, Address, Bytes, BytesN, Env, IntoVal, Symbol, Val,
 };
 
+use crate::core::settle::{compute, preview_total};
+use crate::core::timeout::{effective_status, review_deadline, timeout_at};
 use crate::core::validators::escrow::{validate_init, validate_parties};
 use crate::error::EscrowError;
+use crate::modules::vault;
 use crate::storage::types::{
-    Approvals, DataKey, Dispute, Escrow, EscrowInit, SettlePath, Settlement, Status, StrategyKind,
-    Terms,
+    Approvals, DataKey, Dispute, Escrow, EscrowInit, EscrowView, Roles, SettlePath, Settlement,
+    Status, Terms,
 };
 
 // FIANZAS: storage persistent (security N-21) con TTL renovado en cada escritura.
@@ -90,6 +93,17 @@ impl EscrowManager {
         Self::check_tenant(e, &escrow, tenant, invite_code)?;
         validate_parties(e, &escrow.terms, tenant)?;
         Self::check_funding_allowed(e, &escrow.terms)?;
+        // FIANZAS: el vault no puede haber subido sus comisiones desde que se fijaron en
+        // los Terms que firma el inquilino (§ 9); si las bajó, se admite.
+        if let Some(v) = &escrow.terms.strategy.vault {
+            let (vault_fee, protocol_fee) =
+                vault::current_fees(e, v).ok_or(EscrowError::VaultError)?;
+            if vault_fee > escrow.terms.defindex_vault_fee_bps
+                || protocol_fee > escrow.terms.defindex_protocol_fee_bps
+            {
+                return Err(EscrowError::VaultFeeChanged);
+            }
+        }
 
         let me = e.current_contract_address();
         let amount = escrow.terms.amount;
@@ -104,11 +118,11 @@ impl EscrowManager {
             return Err(EscrowError::InvalidAmount);
         }
 
-        // FIANZAS: el depósito en el vault de DeFindex llega con `modules/vault` y el mock-vault.
-        // Hasta entonces la factory solo registra estrategias NoYield.
-        let shares: i128 = match escrow.terms.strategy.kind {
-            StrategyKind::NoYield => 0,
-            StrategyKind::DeFindexVault => return Err(EscrowError::VaultError),
+        // FIANZAS: con vault, la fianza entera se deposita en DeFindex (invest = true); con
+        // NoYield queda líquida en el escrow.
+        let shares: i128 = match &escrow.terms.strategy.vault {
+            Some(v) => vault::deposit_all(e, v, &escrow.terms.strategy.asset, amount)?,
+            None => 0,
         };
 
         escrow.tenant = Some(tenant.clone());
@@ -188,8 +202,67 @@ impl EscrowManager {
         }
     }
 
-    fn save(e: &Env, escrow: &Escrow) {
+    pub(crate) fn save(e: &Env, escrow: &Escrow) {
         e.storage().persistent().set(&DataKey::Escrow, escrow);
         Self::extend_ttl(e);
+    }
+
+    /// Roles con la forma TW v2, calculados (INTERFACES § 1).
+    pub fn get_roles(e: &Env) -> Result<Roles, EscrowError> {
+        let escrow = Self::get_escrow(e)?;
+        let t = &escrow.terms;
+        let mut approvers = soroban_sdk::Vec::new(e);
+        approvers.push_back(t.landlord.clone());
+        if let Some(tenant) = &escrow.tenant {
+            approvers.push_back(tenant.clone());
+        }
+        let mut service_providers = soroban_sdk::Vec::new(e);
+        service_providers.push_back(t.landlord.clone());
+        Ok(Roles {
+            release_signers: approvers.clone(),
+            approvers,
+            service_providers,
+            platform: t.treasury.clone(),
+            dispute_resolvers: t.dispute_resolvers.clone(),
+            receiver: escrow.tenant.clone(),
+            admin: t.factory.clone(),
+            observers: soroban_sdk::Vec::new(e),
+        })
+    }
+
+    /// Rendimiento bruto estimado: `max(valor en el vault − principal, 0)`. 0 sin vault, sin
+    /// fondos o si el vault falla (CT-10).
+    pub fn accrued_yield(e: &Env, escrow: &Escrow) -> i128 {
+        if escrow.terms.strategy.vault.is_none() || escrow.shares == 0 {
+            return 0;
+        }
+        preview_total(e, escrow)
+            .checked_sub(escrow.terms.amount)
+            .unwrap_or(0)
+            .max(0)
+    }
+
+    pub fn get_view(e: &Env) -> Result<EscrowView, EscrowError> {
+        let escrow = Self::get_escrow(e)?;
+        Ok(EscrowView {
+            status: effective_status(e, &escrow),
+            accrued_yield: Self::accrued_yield(e, &escrow),
+            timeout_at: timeout_at(&escrow)?,
+            review_deadline: review_deadline(&escrow)?,
+            data: escrow,
+        })
+    }
+
+    /// El reparto que saldría hoy con `deduction`, sin mover fondos.
+    pub fn preview_settlement(e: &Env, deduction: i128) -> Result<Settlement, EscrowError> {
+        let escrow = Self::get_escrow(e)?;
+        match escrow.status {
+            Status::Active | Status::Stopped | Status::UnderReview => {}
+            _ => return Err(EscrowError::BadStatus),
+        }
+        if deduction < 0 {
+            return Err(EscrowError::InvalidAmount);
+        }
+        compute(preview_total(e, &escrow), &escrow.terms, deduction)
     }
 }

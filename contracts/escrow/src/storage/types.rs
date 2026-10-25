@@ -137,6 +137,30 @@ pub struct Escrow {
     pub path: SettlePath,
 }
 
+/// Forma TW v2 de los roles, calculada en lectura (no se almacena).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Roles {
+    pub approvers: Vec<Address>,
+    pub service_providers: Vec<Address>,
+    pub platform: Address,
+    pub release_signers: Vec<Address>,
+    pub dispute_resolvers: Vec<Address>,
+    pub receiver: Option<Address>,
+    pub admin: Address,
+    pub observers: Vec<Address>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EscrowView {
+    pub data: Escrow,
+    pub status: Status,       // efectivo (Ending incluido)
+    pub accrued_yield: i128,  // estimación bruta; 0 si el vault falla (CT-10)
+    pub timeout_at: u64,      // end_ts + timeout_secs
+    pub review_deadline: u64, // stopped_ts + review_timeout_secs, o 0
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {

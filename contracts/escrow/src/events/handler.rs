@@ -5,6 +5,8 @@
 // liquidación llegan con sus funciones.
 use soroban_sdk::{contractevent, Address, Symbol};
 
+use crate::storage::types::{SettlePath, Settlement};
+
 #[contractevent(topics = ["fz_init"])]
 #[derive(Clone)]
 pub struct FzInit {
@@ -40,4 +42,24 @@ pub struct FzFund {
     pub tenant: Address,
     pub amount: i128,
     pub shares: i128,
+}
+
+#[contractevent(topics = ["fz_approve"])]
+#[derive(Clone)]
+pub struct FzApprove {
+    #[topic]
+    pub id: u64,
+    pub approver: Address,
+    pub approval_count: u32,
+}
+
+#[contractevent(topics = ["fz_settle"])]
+#[derive(Clone)]
+pub struct FzSettle {
+    #[topic]
+    pub id: u64,
+    pub settlement: Settlement,
+    pub path: SettlePath,
+    /// Lectura con `try_` de `get_fees()` para reporting; nunca bloquea la salida.
+    pub vault_fees_at_settle: Option<(u32, u32)>,
 }

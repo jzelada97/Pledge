@@ -6,6 +6,7 @@ extern crate std;
 use crate::contract::{EscrowContract, EscrowContractClient};
 use crate::storage::types::{EscrowInit, RiskTier, Strategy, StrategyKind, Terms};
 use crate::tests::fake_factory::{FakeFactory, FakeFactoryClient};
+use crate::tests::mock_vault::{MockVault, MockVaultClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{symbol_short, token, vec, Address, Bytes, BytesN, Env};
 use token::Client as TokenClient;
@@ -26,6 +27,7 @@ pub fn create_usdc_token<'a>(e: &Env, admin: &Address) -> (TokenClient<'a>, Toke
 pub struct Setup<'a> {
     pub env: Env,
     pub token: TokenClient<'a>,
+    pub token_sac: TokenAdminClient<'a>,
     pub factory: FakeFactoryClient<'a>,
     pub landlord: Address,
     pub tenant: Address,
@@ -49,9 +51,51 @@ impl<'a> Setup<'a> {
             staff: Address::generate(&env),
             tenant,
             token,
+            token_sac,
             factory,
             env,
         }
+    }
+
+    /// Vault simulado sobre el token de la fianza, con comisiones (100, 2000).
+    pub fn mock_vault(&self) -> MockVaultClient<'a> {
+        let admin = Address::generate(&self.env);
+        let addr = self
+            .env
+            .register(MockVault, (admin, self.token.address.clone()));
+        MockVaultClient::new(&self.env, &addr)
+    }
+
+    /// Terms con estrategia DeFindexVault sobre `vault` y el snapshot de comisiones (100, 2000).
+    pub fn vault_terms(&self, vault: &Address) -> Terms {
+        let mut t = self.terms();
+        t.strategy.id = symbol_short!("usdc_fx");
+        t.strategy.kind = StrategyKind::DeFindexVault;
+        t.strategy.vault = Some(vault.clone());
+        t.strategy.risk = RiskTier::Standard;
+        t.strategy.max_vault_fee_bps = 1_000;
+        t.defindex_vault_fee_bps = 100;
+        t.defindex_protocol_fee_bps = 2_000;
+        t
+    }
+
+    /// Escrow con vault, con invitación y ya fondeado por el inquilino.
+    pub fn funded_vault_escrow(&self, vault: &Address) -> EscrowContractClient<'a> {
+        let terms = self.vault_terms(vault);
+        let escrow = self.register(EscrowInit {
+            terms: terms.clone(),
+            tenant: None,
+            invite_hash: Some(self.invite_hash()),
+        });
+        escrow.fund_escrow(&self.tenant, &Some(self.invite_code()), &terms);
+        escrow
+    }
+
+    /// Escrow NoYield con invitación y ya fondeado.
+    pub fn funded_escrow(&self) -> EscrowContractClient<'a> {
+        let escrow = self.escrow_with_invite();
+        escrow.fund_escrow(&self.tenant, &Some(self.invite_code()), &self.terms());
+        escrow
     }
 
     pub fn terms(&self) -> Terms {

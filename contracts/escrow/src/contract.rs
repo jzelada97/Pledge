@@ -9,10 +9,10 @@
 // INTERFACES § 2 llega en las fases 3b y 5.
 use soroban_sdk::{contract, contractimpl, panic_with_error, Address, BytesN, Env};
 
-use crate::core::EscrowManager;
+use crate::core::{EscrowManager, MilestoneManager};
 use crate::error::EscrowError;
 use crate::events::handler::{FzCancel, FzFund, FzInit};
-use crate::storage::types::{Escrow, EscrowInit, Terms};
+use crate::storage::types::{Escrow, EscrowInit, EscrowView, Roles, Settlement, Terms};
 
 #[contract]
 pub struct EscrowContract;
@@ -84,5 +84,29 @@ impl EscrowContract {
 
     pub fn get_terms(e: Env) -> Result<Terms, EscrowError> {
         Ok(EscrowManager::get_escrow(&e)?.terms)
+    }
+
+    // FIANZAS: `approve_milestones` + `approve_and_release_milestones` → `approve_release`.
+    // Casero e inquilino aprueban en cualquier orden; la segunda aprobación liquida.
+    pub fn approve_release(e: Env, approver: Address) -> Result<Option<Settlement>, EscrowError> {
+        Ok(MilestoneManager::approve_release(&e, &approver)?.1)
+    }
+
+    pub fn get_roles(e: Env) -> Result<Roles, EscrowError> {
+        EscrowManager::get_roles(&e)
+    }
+
+    pub fn get_view(e: Env) -> Result<EscrowView, EscrowError> {
+        EscrowManager::get_view(&e)
+    }
+
+    pub fn accrued_yield(e: Env) -> i128 {
+        EscrowManager::get_escrow(&e)
+            .map(|escrow| EscrowManager::accrued_yield(&e, &escrow))
+            .unwrap_or(0)
+    }
+
+    pub fn preview_settlement(e: Env, deduction: i128) -> Result<Settlement, EscrowError> {
+        EscrowManager::preview_settlement(&e, deduction)
     }
 }

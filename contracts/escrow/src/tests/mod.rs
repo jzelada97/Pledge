@@ -3,7 +3,12 @@
 // se sustituyen por los nuestros. Se conserva el estilo de helpers.rs.
 mod fake_factory;
 mod helpers;
+mod mock_vault;
 
+mod approve;
 mod cancel;
 mod constructor;
 mod fund;
+mod reads;
+mod split;
+mod vault;
