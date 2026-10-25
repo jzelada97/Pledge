@@ -2,7 +2,7 @@
 
 Plataforma para caseros y grandes caseros. Cada fianza de habitación es un **escrow propio** creado por un **factory** (`FianzaFactory`).
 
-- **El escrow es un fork del contrato de Trustless Work**, hecho con su permiso (ver `NOTICE.md`), al que añadimos el depósito en **DeFindex**. Por defecto usa el vault sobre el **Blend Fixed Pool USDC**, que rinde ~6-7 % variable y **nunca es "sin riesgo"**.
+- **El escrow es código propio**, escrito desde cero (sin código de Trustless Work), y deposita la fianza en **DeFindex**. Por defecto usa el vault sobre el **Blend Fixed Pool USDC**, que rinde ~6-7 % variable y **nunca es "sin riesgo"**.
 - **La fianza vuelve entera al inquilino** cuando **casero e inquilino aprueban**. Solo se reparte el **rendimiento**: un % para la plataforma y el resto según el preset del país.
 - **Solo el casero puede parar**, depositando un **stop bond**. El staff asigna un **perito** y resuelve:
   - si la parada estaba justificada, el bond vuelve al casero;
@@ -24,7 +24,7 @@ Hackatón de 28 horas, 4 personas, testnet.
 ## Roles y carpetas
 | Rol | Persona | Responsable de | Carpetas |
 |---|---|---|---|
-| P1 | Carlos · @CarlosJX7 | Escrow (fork de Trustless Work + DeFindex) y factory | `contracts/escrow/`, `contracts/factory/` |
+| P1 | Carlos · @CarlosJX7 | Escrow (propio + DeFindex) y factory | `contracts/escrow/`, `contracts/factory/` |
 | P2 | Jose · @jzelada97 | DeFi + infra, **integrador** | `contracts/mock-vault/`, `contracts/yield-adapter/`, `packages/bindings/` (generado), `scripts/deploy|e2e|fund/`, `deployments/` |
 | P3 | Ricardo · @RicardoMatosR | Onboarding sin cripto | `packages/wallet/` (passkeys + Relayer), `packages/anchor/` (SEP-24/SEP-45) |
 | P4 | Diego · @Diego-Matoss | UX/UI + pitch | `apps/web/` (casero e inquilino), `apps/backoffice/` (staff), `pitch/` |
@@ -53,7 +53,7 @@ Hackatón de 28 horas, 4 personas, testnet.
 
 ## Reglas de código
 - **Contratos (Rust/Soroban):** `require_auth` en todo lo que mueva fondos o cambie estado. Shares e importes por diferencia de balances. Storage `persistent` con `extend_ttl`. `checked_*` en la aritmética. Cada función pública lleva test.
-- **Código de Trustless Work:** mantén la atribución y la cabecera de origen en los archivos copiados. Marca cada cambio nuestro con `// FIANZAS:` para que el diff con el original se pueda revisar.
+- **Código de terceros:** el repo es público. No copies código de otros proyectos sin una licencia compatible (Trustless Work no publica licencia: no se copia nada suyo).
 - **Estrategias de rendimiento:** solo las del registro del factory. En código, UI y pitch, el APY es siempre "variable" y nunca "garantizado", "0 riesgo" ni "sin riesgo".
 - **Bindings TS** (`packages/bindings/`): se generan con `scripts/bindings.sh`. **No se editan a mano.**
 - **Front:** el usuario final no ve "wallet", "seed", "XLM" ni "gas". Usa el glosario.
