@@ -13,6 +13,20 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ---
 
+## 2026-10-25 · El rendimiento lo fija la jurisdicción: en el MVP (Portugal), al casero
+- **Decisión:** quién se lleva el rendimiento neto no lo elige el casero en cada fianza: depende de las normas de cada jurisdicción. El MVP y el pitch son para **Portugal**, con **todo el rendimiento neto para el casero** (`tenant_yield_bps = 0`). La fianza sigue volviendo entera al inquilino y el fee de plataforma sigue saliendo solo del rendimiento.
+- **Cambio de interfaz propuesto (#16):** `tenant_yield_bps` sale de `FianzaParams` y pasa a `GlobalConfig` (la fija el admin; demo 0). La factory la copia en `Terms.tenant_yield_bps`, así que el escrow, `split()`, `Settlement` y los eventos no cambian. `deployments/testnet.json` lleva `tenantYieldBps` y WEB-14 lo comprueba antes de fondear.
+- **UI:** sin presets ni selector. La pantalla de crear fianza, la invitación y el panel solo informan de a quién va el rendimiento, y nunca afirman qué dice la ley.
+- **Descartado:** los presets por fianza (todo al inquilino, 50/50, todo al casero, personalizado), porque el reparto es una cuestión legal y no una elección comercial; y dejarlo en `FianzaParams` con la UI enviando 0, porque un casero podría saltárselo llamando a la factory directamente.
+- **Sustituye en parte a:** "Reparto del dinero" (el neto ya no va "según el preset del país").
+- Decide: P4 · Implementa: P1 (factory), P2 (config del deploy y `deployments`), P4 (UI) · Revisa: equipo
+
+## 2026-10-25 · Todas las fianzas se crean con enlace de invitación
+- **Decisión:** el casero siempre crea la fianza con invitación (`tenant: None`, `invite_hash: Some(h)`) y el inquilino la fondea por ese enlace, tenga ya cuenta o no. En la invitación, Face ID inicia sesión si ya tiene cuenta (`wallet.connect()`) o la crea (`wallet.createAccount()`).
+- **Sin cambio de interfaz:** el contrato puede seguir aceptando `tenant: Some(t)`; la UI no lo usa.
+- **Descartado:** la opción "ya tengo la cuenta del inquilino". Un solo camino es más simple para el casero y para la demo.
+- Decide: P4 · Implementa: P4
+
 ## 2026-10-25 · Kit de passkeys: smart-account-kit + Relayer propio
 - **Decisión:** `smart-account-kit` **0.8.0** (cuentas de OpenZeppelin con passkey) con `@stellar/stellar-sdk` **16.4.1** (el kit exige `^16.3`). El kit envía `{ func, auth }` a nuestro `/api/relay` (`createRelayHandler` de `@fianzas/wallet/server`), que valida con la `RelayPolicy` y reenvía a OpenZeppelin Channels por HTTP (sin `@openzeppelin/relayer-plugin-channels`, que arrastra otra versión del SDK).
 - **Datos de testnet** (comprobados on-chain el 25-oct-2026, protocolo 29), para `deployments/testnet.json`:
@@ -73,7 +87,7 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 ## 2026-10-25 · Reparto del dinero
 - **Decisión:**
   - **La fianza (principal) vuelve entera al inquilino**, menos la deducción que fije el staff según el informe del perito.
-  - **Solo se reparte el rendimiento:** `platform_fee_bps` para la plataforma (propuesta: 20 %) y el neto según `tenant_yield_bps`, el preset del país: todo al inquilino, 50/50, todo al casero o personalizado.
+  - **Solo se reparte el rendimiento:** `platform_fee_bps` para la plataforma (propuesta: 20 %) y el neto según `tenant_yield_bps`. ~~El preset del país: todo al inquilino, 50/50, todo al casero o personalizado.~~ **Sustituido:** lo fija la jurisdicción en `GlobalConfig` (ver "El rendimiento lo fija la jurisdicción", arriba).
   - Si el vault devuelve menos que el principal, la pérdida va primero contra el rendimiento.
 - **Pendiente:** fijar los números definitivos en el PoC.
 - Decide: equipo
