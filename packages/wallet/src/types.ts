@@ -10,11 +10,32 @@ export interface SignAndSendOptions {
   expectedTransferAmount?: bigint;
 }
 
-// API pública que consume P4 (INTERFACES § 8).
+// Respuesta de los builds de apps/api (INTERFACES § 8): la de TW más la extensión `soroban`.
+export interface UnsignedTransactionResponse {
+  unsignedXdr: string; // firmable tal cual solo si el firmante es una cuenta G
+  txHash: string;
+  contractId?: string | null;
+  soroban?: {
+    // solo si el firmante es una C-address (passkey)
+    func: string; // base64 XDR HostFunction
+    auth: string[]; // base64 SorobanAuthorizationEntry sin firmar
+    validUntilLedger: number; // latestLedger + 60
+  };
+}
+
+export interface SignBuiltOptions extends SignAndSendOptions {
+  // Solo para builds sin `soroban` (cuenta G, p. ej. Freighter): firma el XDR y devuelve el XDR firmado.
+  signXdr?: (unsignedXdr: string) => Promise<string>;
+}
+
+// API pública que consume P4 (INTERFACES § 10).
 export interface Wallet {
   createAccount(displayName: string): Promise<{ address: string }>; // passkey nueva → C-address
   connect(): Promise<{ address: string } | null>; // reconexión silenciosa
   signAndSend(tx: contract.AssembledTransaction<unknown>, opts?: SignAndSendOptions): Promise<{ hash: string }>; // fees vía Relayer
+  // Firma lo que construye apps/api: con `soroban`, las auth entries con la passkey y envío por relayPath;
+  // sin él, el XDR con opts.signXdr y envío por sendTransactionPath.
+  signAndSendBuilt(res: UnsignedTransactionResponse, opts?: SignBuiltOptions): Promise<{ hash: string }>;
   disconnect(): Promise<void>;
 }
 
@@ -33,5 +54,6 @@ export interface WalletConfig extends ContractsConfig {
   rpName: string; // nombre que ve el usuario al crear la passkey
   accountWasmHash: string; // deployments.smartAccount.accountWasmHash
   webauthnVerifierAddress: string; // deployments.smartAccount.webauthnVerifier
-  relayerUrl: string; // normalmente "/api/relay" (createRelayHandler)
+  relayPath: string; // "/api/fianzas/v1/relay" (createRelayHandler montado en apps/api)
+  sendTransactionPath?: string; // por defecto "/api/stellar/send-transaction"
 }
