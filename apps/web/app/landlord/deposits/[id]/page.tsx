@@ -6,6 +6,7 @@ import { ME_LANDLORD, depositById } from "@/lib/fixtures";
 import { STATUS_LABEL, date, daysFromNow, money, nowSecs, percent } from "@/lib/format";
 import { breakdown, split } from "@/lib/split";
 import { RISK_LABEL, STRATEGY_COPY } from "@/lib/strategies";
+import { yieldGoesTo } from "@/lib/yield-policy";
 
 export default async function DepositDetail({ params }: PageProps<"/landlord/deposits/[id]">) {
   const { id } = await params;
@@ -35,7 +36,7 @@ export default async function DepositDetail({ params }: PageProps<"/landlord/dep
         <Box title="Terms">
           <Row label="Deposit" value={money(terms.amount)} />
           <Row label="Contract end" value={`${date(terms.end_ts)} (${daysFromNow(terms.end_ts)})`} />
-          <Row label="Tenant's share of the yield" value={percent(terms.tenant_yield_bps)} />
+          <Row label="Yield after the platform fee goes to" value={yieldGoesTo(terms.tenant_yield_bps, "landlord")} />
           <Row label="Platform fee (on the yield only)" value={percent(terms.platform_fee_bps)} />
           <Row label="Good-faith deposit to stop" value={money(terms.stop_bond)} />
           {live && <Row label="If you don't respond, the tenant can claim" value={daysFromNow(d.timeout_at)} />}
@@ -46,7 +47,7 @@ export default async function DepositDetail({ params }: PageProps<"/landlord/dep
           {b.deduction > 0n && <Row label="Deduction to you" value={money(b.deduction)} />}
           <Row label={d.data.settlement ? "Yield (variable)" : "Yield so far (variable)"} value={money(s.yield_total)} />
           <Row label="· Platform fee" value={money(b.platformFee)} />
-          <Row label="· Tenant" value={money(b.tenantYield)} />
+          {terms.tenant_yield_bps > 0 && <Row label="· Tenant" value={money(b.tenantYield)} />}
           <Row label="· You" value={money(b.landlordYield)} />
           <Note>The deposit and the yield are always shown apart. The deposit itself never pays fees.</Note>
         </Box>

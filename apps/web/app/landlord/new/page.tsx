@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { PolicyPicker } from "@/components/policy-picker";
 import { SignButton } from "@/components/sign-button";
 import { StrategyPicker } from "@/components/strategy-picker";
 import { Box, Note, Row, Screen } from "@/components/wire";
@@ -9,19 +8,19 @@ import { CONFIG } from "@/lib/fixtures";
 import { money, percent, toUnits } from "@/lib/format";
 import { breakdown, computeStopBond, split } from "@/lib/split";
 import { DEFAULT_STRATEGY_ID, STRATEGY_COPY } from "@/lib/strategies";
+import { YIELD_POLICY_NOTE, yieldGoesTo } from "@/lib/yield-policy";
 
 const EXAMPLE_APY = 0.065; // placeholder for the live APY read from Strategy.apy_pool
 
 export default function NewDeposit() {
   const [amount, setAmount] = useState(1200);
   const [months, setMonths] = useState(12);
-  const [tenantBps, setTenantBps] = useState(10000);
   const [strategyId, setStrategyId] = useState(DEFAULT_STRATEGY_ID);
 
   const units = toUnits(amount);
   const earns = strategyId === "usdc_fixed" || strategyId === "usdc_mock";
   const exampleYield = earns ? toUnits(amount * EXAMPLE_APY * (months / 12)) : 0n;
-  const preview = split(units, units + exampleYield, 0n, CONFIG.platform_fee_bps, tenantBps);
+  const preview = split(units, units + exampleYield, 0n, CONFIG.platform_fee_bps, CONFIG.tenant_yield_bps);
   const b = breakdown(preview, units);
   const bond = computeStopBond(units, CONFIG.stop_bond_min, CONFIG.stop_bond_bps);
 
@@ -63,7 +62,9 @@ export default function NewDeposit() {
       </Box>
 
       <Box title="3 · Who gets the yield">
-        <PolicyPicker bps={tenantBps} onChange={setTenantBps} />
+        <Row label="The yield after the platform fee goes to" value={yieldGoesTo(CONFIG.tenant_yield_bps, "landlord")} />
+        <p className="text-sm text-neutral-600">{YIELD_POLICY_NOTE}</p>
+        <Note>Read from factory.config().tenant_yield_bps. Not editable per deposit (issue #16).</Note>
       </Box>
 
       <Box title="4 · Where the deposit is kept">
@@ -76,7 +77,7 @@ export default function NewDeposit() {
         <Row label="Strategy" value={STRATEGY_COPY[strategyId].name} />
         <Row label={`Example yield over ${months} months (${STRATEGY_COPY[strategyId].apy})`} value={money(exampleYield)} />
         <Row label={`· Platform fee (${percent(CONFIG.platform_fee_bps)} of the yield)`} value={money(preview.to_treasury)} />
-        <Row label="· Tenant's share of the yield" value={money(b.tenantYield)} />
+        {CONFIG.tenant_yield_bps > 0 && <Row label="· Tenant's share of the yield" value={money(b.tenantYield)} />}
         <Row label="· Your share of the yield" value={money(b.landlordYield)} />
         <Row label="Good-faith deposit if you stop the release" value={money(bond)} />
         <Note>Example only: the yield is variable and can be lower, or zero.</Note>
