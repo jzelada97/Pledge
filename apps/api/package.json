@@ -1,0 +1,31 @@
+{
+  "name": "@fianzas/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "API compatible con la Core API v2 de Trustless Work + /fianzas/v1. Se monta en apps/web (app/api/[[...path]]) o se sirve sola con `pnpm dev`.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx --conditions=react-server src/dev.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fianzas/anchor": "workspace:*",
+    "@fianzas/wallet": "workspace:*",
+    "@hono/zod-validator": "0.9.1",
+    "@stellar/stellar-sdk": "16.4.1",
+    "hono": "4.13.14",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@hono/node-server": "2.1.5",
+    "@types/node": "24.19.2",
+    "tsx": "4.20.6",
+    "typescript": "6.0.3",
+    "vitest": "5.0.5"
+  }
+}
