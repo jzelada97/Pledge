@@ -354,7 +354,7 @@ fn get_manager(e: Env) -> Result<Address, ContractError>;   // solo lo usa la fa
   - `escrow.stop`: solo `token.transfer(landlord, escrow, terms.stop_bond)`.
   - El resto: ninguna.
   - La raíz debe ser `deployments.factory`, o un escrow con `factory.id_of(addr)` válido.
-- **§ 10 `Wallet`** += `signAndSendBuilt(res: UnsignedTransactionResponse, opts?: { onPhase }) => Promise<{ hash }>`: con `res.soroban` firma las auth entries con la passkey y envía a `/api/fianzas/v1/relay`; sin él (cuenta G) firma el XDR y llama a `/api/stellar/send-transaction` (§ 8.4). `WalletConfig.relayPath = "/api/fianzas/v1/relay"`.
+- **§ 10 `Wallet`** += `signAndSendBuilt(res: UnsignedTransactionResponse, opts?: SignBuiltOptions) => Promise<{ hash }>`: con `res.soroban` firma las auth entries con la passkey y envía a `/api/fianzas/v1/relay`; sin él (cuenta G) firma el XDR y llama a `/api/stellar/send-transaction` (§ 8.4). `WalletConfig.relayPath = "/api/fianzas/v1/relay"`.
 - **§ 10 `@fianzas/wallet/server`:** nueva `RelayPolicy` (arquitectura § 8.2, con los topes de security N-3). La monta `apps/api` (P2) en `/fianzas/v1/relay`, no `apps/web`.
 - **§ 11 (anchor y ramp simulado):** sin cambios de interfaz; se añaden las restricciones del ramp simulado.
 - **§ 12 Rendimiento por jurisdicción:** sin presets. `tenant_yield_bps` lo fija `GlobalConfig` (#16); el front solo lo lee de `Terms` y no afirma la ley.
@@ -540,8 +540,8 @@ Auth: **A** = anónima de la misma origin; **K** = `x-api-key`; **A/K** = cualqu
 | POST | `/fianzas/v1/fianzas/{contractId}/claim-review-timeout` | A/K | `{ signer }` | UTR | cualquiera | `escrow.claim_after_review_timeout` |
 | GET | `/fianzas/v1/landlords/{address}/fianzas` | A/K | `cursor, limit, status` | `{ data: FianzaSummary[], hasMore, nextCursor }` | — | `factory.list_by_landlord` + `get_fianzas` |
 | GET | `/fianzas/v1/tenants/{address}/fianzas` | A/K | `cursor, limit, status` | igual | — | `factory.list_by_tenant` + `get_fianzas` |
-| POST | `/fianzas/v1/relay` | A (misma origin) | `{ func, auth[] }` | `{ hash, status }` / `{ code }` | auth entries con passkey; origen y fee: Relayer | la de `func` (lista blanca) |
-| POST · GET | `/fianzas/v1/ramp` | A (misma origin) | `{ to, amount }` · `?id=` | `{ id, hash }` · `{ status }` | faucet (servidor) | `token.transfer` |
+| POST | `/fianzas/v1/relay` | A (misma origin) | `{ func, auth[] }` | `{ success: true, data: { transactionId, hash, status } }` / `{ success: false, code }` (formato que exige smart-account-kit) | auth entries con passkey; origen y fee: Relayer | la de `func` (lista blanca) |
+| POST · GET | `/fianzas/v1/ramp` | A (misma origin) | `{ to, amount }` · `?id=` | `{ id, status }` (id = hash de la tx) · `{ status }` | faucet (servidor) | `token.transfer` |
 | POST/PUT | `deploy`, `release-funds`, `change-milestone-status`, `dispute`, `resolve-dispute`, `withdraw-remaining-funds`, `update`, `manage-milestones`, `/graphql` | — | — | `501 FZ_ENDPOINT_NOT_SUPPORTED` + `extensions.replacement` | — | — |
 
 En el MVP, `/stop`, `/resolve`, `/assign-expert` y `/record-report` con `signer`/`resolver` G devuelven un XDR que el staff firma con Freighter y envía con `send-transaction`. Las funciones de staff **nunca** pasan por el Relayer.
@@ -593,10 +593,18 @@ export interface SignAndSendOptions {
   expectedTransferAmount?: bigint;   // obligatorio en `stop`: terms.stop_bond (para WEB-3)
 }
 
+export interface SignBuiltOptions extends SignAndSendOptions {
+  signXdr?: (unsignedXdr: string) => Promise<string>; // solo builds sin `soroban` (cuenta G, p. ej. Freighter)
+}
+
 export interface Wallet {
   createAccount(displayName: string): Promise<{ address: string }>; // passkey nueva → C-address (despliegue patrocinado)
   connect(): Promise<{ address: string } | null>;                    // reconexión silenciosa (sesión en IndexedDB)
   signAndSend(tx: AssembledTransaction<unknown>, opts?: SignAndSendOptions): Promise<{ hash: string }>; // fees vía Relayer
+  // Para los builds de apps/api (UnsignedTransactionResponse, § 8). Con `soroban`: WEB-3, firma solo la entrada
+  // del firmante con expiración min(validUntilLedger, latest + 60) y envía { func, auth } a relayPath.
+  // Sin `soroban`: opts.signXdr firma el XDR y se envía { signedXdr } a sendTransactionPath.
+  signAndSendBuilt(res: UnsignedTransactionResponse, opts?: SignBuiltOptions): Promise<{ hash: string }>;
   disconnect(): Promise<void>;
 }
 
@@ -606,7 +614,8 @@ export interface WalletConfig {
   rpName: string;                   // nombre que ve el usuario al crear la passkey
   accountWasmHash: string;          // deployments.smartAccount.accountWasmHash
   webauthnVerifierAddress: string;  // deployments.smartAccount.webauthnVerifier
-  relayerUrl: string;               // "/api/relay"
+  relayPath: string;                // "/api/fianzas/v1/relay"
+  sendTransactionPath?: string;     // por defecto "/api/stellar/send-transaction"
   factory: string; token: string;   // deployments.factory, deployments.token
   isRegisteredEscrow(addr: string): Promise<boolean>; // factory.id_of(addr) no da NotFound
 }
@@ -652,7 +661,7 @@ export interface RelayPolicy {
 }
 export function createRelayHandler(cfg: {
   policy: RelayPolicy; relayerUrl: string; apiKey: string; rpcUrl: string; networkPassphrase: string;
-}): (req: Request) => Promise<Response>;      // app/api/relay/route.ts: export const POST = createRelayHandler({ … })
+}): (req: Request) => Promise<Response>;      // lo monta apps/api (P2) en POST /fianzas/v1/relay
 ```
 - Recibe lo que envía el kit: `{ func, auth }` en base64, sin campos extra. Lo reenvía a Channels como `{ params: { func, auth } }` con `Authorization: Bearer <RELAYER_API_KEY>`.
 - Un escrow que no está en `fixedContracts` solo pasa si **las dos** comprobaciones dan bien: su ejecutable (`getLedgerEntries`) es un wasm de `escrow.wasmHashes` y `factory.id_of(addr)` devuelve un id. El resultado se cachea por dirección.
@@ -673,7 +682,7 @@ export interface Anchor {
   status(id: string): Promise<"pending" | "completed" | "error">;
   isSimulated: boolean; // true en el plan B: la UI lo muestra
 }
-export function createSimulatedAnchor(cfg: { rampUrl: string }): Anchor; // rampUrl: "/api/ramp"
+export function createSimulatedAnchor(cfg: { rampPath: string }): Anchor; // rampPath: "/api/fianzas/v1/ramp"
 export class FakeAnchor implements Anchor { constructor(delayMs?: number) }
 export class AnchorError extends Error { code: "NOT_SUPPORTED" | "INVALID_AMOUNT" | "RATE_LIMITED" | "DISABLED" | "RAMP_DOWN" }
 ```
@@ -689,7 +698,7 @@ export function createSimRampHandler(cfg: {
   allowedOrigins: string[];
   maxAmount: string; perAddressCap: string; perIpPerHour: number; globalHourlyCap: number;
 }): { POST: (req: Request) => Promise<Response>; GET: (req: Request) => Promise<Response> };
-// app/api/ramp/route.ts: export const { POST, GET } = createSimRampHandler({ … })
+// lo monta apps/api (P2) en POST/GET /fianzas/v1/ramp
 ```
 - `POST { to, amount }` → `{ id, status: "completed" }` cuando la transferencia se confirma. `GET ?id=` → `{ status }`, solo de ids emitidos por esa instancia.
 - `createSimRampHandler` lanza una excepción al construirse con la *passphrase* de mainnet.

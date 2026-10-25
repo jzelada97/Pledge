@@ -1,13 +1,11 @@
 // Wallet real: cuenta inteligente con passkey (smart-account-kit) y fees patrocinados por el Relayer.
-// El kit envía { func, auth } a cfg.relayerUrl, que es nuestro createRelayHandler (./server).
+// El kit envía { func, auth } a cfg.relayPath, que es nuestro createRelayHandler (./server) montado en apps/api.
 import { IndexedDBStorage, SmartAccountErrorCode, SmartAccountKit } from "smart-account-kit";
 import { rpc, type contract } from "@stellar/stellar-sdk";
 import { verifyAuthTree } from "./auth-check";
+import { SIGNATURE_LEDGERS, sendBuilt } from "./built";
 import { WalletError, type WalletErrorCode } from "./errors";
-import type { SignAndSendOptions, Wallet, WalletConfig } from "./types";
-
-// Ventana de validez de la firma: unos 5 minutos (security AUTH-5).
-const SIGNATURE_LEDGERS = 60;
+import type { SignAndSendOptions, SignBuiltOptions, UnsignedTransactionResponse, Wallet, WalletConfig } from "./types";
 
 function contractCodeOf(message: string): number | undefined {
   const m = /Error\(Contract, #(\d+)\)/.exec(message);
@@ -42,7 +40,7 @@ export function createWallet(cfg: WalletConfig): Wallet {
     webauthnVerifierAddress: cfg.webauthnVerifierAddress,
     rpId: cfg.rpId,
     rpName: cfg.rpName,
-    relayerUrl: cfg.relayerUrl,
+    relayerUrl: cfg.relayPath,
     storage: new IndexedDBStorage(),
   });
   const server = new rpc.Server(cfg.rpcUrl);
@@ -85,6 +83,25 @@ export function createWallet(cfg: WalletConfig): Wallet {
         if (!res.success) throw res.error;
         opts.onPhase?.("submitting");
         return { hash: res.hash };
+      } catch (e) {
+        throw toWalletError(e);
+      }
+    },
+
+    async signAndSendBuilt(res: UnsignedTransactionResponse, opts: SignBuiltOptions = {}) {
+      if (res.soroban && !address) throw new WalletError("NOT_CONNECTED");
+      try {
+        return await sendBuilt(
+          res,
+          {
+            signer: address ?? "",
+            cfg,
+            latestLedger: async () => (await server.getLatestLedger()).sequence,
+            signAuthEntry: (entry, expiration) => kit.signAuthEntry(entry, { expiration }),
+            fetch: (input, init) => fetch(input, init),
+          },
+          opts,
+        );
       } catch (e) {
         throw toWalletError(e);
       }
