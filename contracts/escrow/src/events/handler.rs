@@ -1,138 +1,43 @@
 // Derived from Trustless-Work/trustlesswork-smart-contract-stellar@1d22d0c (contracts/escrow/src/events/handler.rs), modified. See contracts/escrow/NOTICE.md
-use soroban_sdk::{contractevent, Address, Bytes, BytesN, Env, String, Vec};
+// FIANZAS: topics `tw_*` → `fz_*` (un indexer de TW no debe leerlos con su semántica) y topic 1
+// = `id` de la fianza. Sin `hash_string`: ya no hay cadenas. Se mantiene el estilo
+// `#[contractevent]` con campos con nombre del upstream. Los eventos de aprobación, parada y
+// liquidación llegan con sus funciones.
+use soroban_sdk::{contractevent, Address, Symbol};
 
-use crate::storage::types::{
-    DistributionEntry, EscrowPropertyChanges, MilestoneAddedEntry, MilestoneStatusEntry,
-    MilestoneUpdatedEntry,
-};
-
-/// Validator cap for evidence/description; sizes the on-stack hash buffer.
-const MAX_HASHABLE_LEN: usize = 500;
-
-/// SHA-256 of a `String`, to prove event content without echoing raw bytes.
-///
-/// SAFETY: callers must pass only length-validated strings (<= MAX_HASHABLE_LEN);
-/// a longer one would panic on the fixed buffer. All call sites hash after
-/// validation succeeds.
-pub fn hash_string(e: &Env, value: &String) -> BytesN<32> {
-    let len = value.len() as usize;
-    let mut buf = [0u8; MAX_HASHABLE_LEN];
-    value.copy_into_slice(&mut buf[..len]);
-    let bytes = Bytes::from_slice(e, &buf[..len]);
-    e.crypto().sha256(&bytes).to_bytes()
-}
-
-#[contractevent(topics = ["tw_init"])]
+#[contractevent(topics = ["fz_init"])]
 #[derive(Clone)]
-pub struct InitEsc {
+pub struct FzInit {
     #[topic]
-    pub engagement_id: String,
+    pub id: u64,
+    pub factory: Address,
+    pub landlord: Address,
     pub amount: i128,
-    pub platform_fee: u32,
-    pub trustline: Address,
-    pub receiver: Address,
+    pub end_ts: u64,
+    pub tenant_yield_bps: u32,
+    pub strategy_id: Symbol,
+    pub stop_bond: i128,
+    pub has_invite: bool,
+    pub platform_fee_bps: u32,
+    pub tw_fee_bps: u32,
+    pub defindex_vault_fee_bps: u32,
+    pub defindex_protocol_fee_bps: u32,
 }
 
-#[contractevent(topics = ["tw_fund"])]
+#[contractevent(topics = ["fz_cancel"])]
 #[derive(Clone)]
-pub struct FundEsc {
+pub struct FzCancel {
     #[topic]
-    pub engagement_id: String,
-    pub funder: Address,
+    pub id: u64,
+    pub landlord: Address,
+}
+
+#[contractevent(topics = ["fz_fund"])]
+#[derive(Clone)]
+pub struct FzFund {
+    #[topic]
+    pub id: u64,
+    pub tenant: Address,
     pub amount: i128,
-    pub funded_total: i128,
-}
-
-#[contractevent(topics = ["tw_release"])]
-#[derive(Clone)]
-pub struct ReleaseEsc {
-    #[topic]
-    pub engagement_id: String,
-    pub release_signer: Address,
-    pub receiver: Address,
-    pub amount: i128,
-    pub platform_fee: i128,
-    pub trustless_work_fee: i128,
-    pub net_amount: i128,
-}
-
-#[contractevent(topics = ["tw_update"])]
-#[derive(Clone)]
-pub struct EscrowUpdated {
-    #[topic]
-    pub engagement_id: String,
-    pub admin: Address,
-    pub changes: EscrowPropertyChanges,
-}
-
-#[contractevent(topics = ["tw_ms_change"])]
-#[derive(Clone)]
-pub struct MilestoneStatusChanged {
-    #[topic]
-    pub engagement_id: String,
-    pub service_provider: Address,
-    pub updates: Vec<MilestoneStatusEntry>,
-}
-
-#[contractevent(topics = ["tw_ms_approve"])]
-#[derive(Clone)]
-pub struct MilestonesApproved {
-    #[topic]
-    pub engagement_id: String,
-    pub approver: Address,
-    pub milestone_indices: Vec<u32>,
-}
-
-#[contractevent(topics = ["tw_dispute"])]
-#[derive(Clone)]
-pub struct EscrowDisputed {
-    #[topic]
-    pub engagement_id: String,
-    pub signer: Address,
-    pub reason: String,
-}
-
-#[contractevent(topics = ["tw_disp_resolve"])]
-#[derive(Clone)]
-pub struct DisputeResolved {
-    #[topic]
-    pub engagement_id: String,
-    pub dispute_resolver: Address,
-    pub platform_fee: i128,
-    pub trustless_work_fee: i128,
-    pub distributions: Vec<DistributionEntry>,
-}
-
-#[contractevent(topics = ["tw_withdraw"])]
-#[derive(Clone)]
-pub struct FundsWithdrawn {
-    #[topic]
-    pub engagement_id: String,
-    pub dispute_resolver: Address,
-    pub platform_fee: i128,
-    pub trustless_work_fee: i128,
-    pub distributions: Vec<DistributionEntry>,
-}
-
-#[contractevent(topics = ["tw_ms_manage"])]
-#[derive(Clone)]
-pub struct MilestonesManaged {
-    #[topic]
-    pub engagement_id: String,
-    pub admin: Address,
-    pub added_count: u32,
-    pub updated_count: u32,
-    /// Milestones appended by this call (final index + description hash).
-    pub added: Vec<MilestoneAddedEntry>,
-    /// In-place edits applied by this call (index + changed fields only).
-    pub updated: Vec<MilestoneUpdatedEntry>,
-}
-
-#[contractevent(topics = ["tw_ttl_extend"])]
-#[derive(Clone)]
-pub struct TtlExtended {
-    #[topic]
-    pub engagement_id: String,
-    pub admin: Address,
-    pub ledgers_to_extend: u32,
+    pub shares: i128,
 }

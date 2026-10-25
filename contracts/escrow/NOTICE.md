@@ -23,13 +23,17 @@ Rutas relativas a `contracts/escrow/`. Esta tabla se actualiza con cada cambio d
 |---|---|
 | `Cargo.toml` | Modificado: versiones explícitas, workspace propio y perfiles de release del `Cargo.toml` raíz del upstream |
 | `Cargo.lock` | Copiado del `Cargo.lock` raíz del upstream |
-| `src/lib.rs` | Modificado: `allow` temporal de los lints de clippy que el upstream no pasa (se quita en el recorte) |
-| `src/contract.rs` | Copiado |
-| `src/error.rs` | Copiado |
-| `src/core/dispute.rs`, `src/core/escrow.rs`, `src/core/milestone.rs` | Copiados |
-| `src/core/validators/dispute.rs`, `src/core/validators/escrow.rs`, `src/core/validators/milestone.rs` | Copiados |
-| `src/events/handler.rs` | Copiado |
-| `src/modules/fee/calculator.rs`, `src/modules/fee/distribution.rs` | Copiados |
-| `src/modules/math/basic.rs`, `src/modules/math/safe.rs` | Copiados |
-| `src/storage/types.rs` | Copiado |
-| `src/tests/*.rs` (8 archivos) | Copiados. Se sustituyen en el recorte del fork |
+| `src/lib.rs` | Modificado: árbol de módulos del fork; los archivos pendientes de portar quedan fuera |
+| `src/contract.rs` | Modificado: entrypoints de INTERFACES § 2 (constructor, `fund_escrow`, `cancel`, lecturas); eliminadas las funciones del upstream |
+| `src/error.rs` | Reescrito: un único `EscrowError` con códigos únicos |
+| `src/core/escrow.rs` | Modificado: `init_from_constructor`, `fund_escrow` con invitación y `expected_terms`, `cancel` |
+| `src/core/validators/escrow.rs` | Modificado: `validate_init` y `validate_parties`; se conserva `has_duplicate_addresses` |
+| `src/events/handler.rs` | Reescrito: eventos `fz_*` |
+| `src/storage/types.rs` | Reescrito: tipos de INTERFACES § 2 |
+| `src/core/dispute.rs`, `src/core/milestone.rs` | Copiados, pendientes de portar (aprobación y parada); fuera del árbol de módulos |
+| `src/core/validators/dispute.rs`, `src/core/validators/milestone.rs` | Copiados, pendientes de portar; fuera del árbol de módulos |
+| `src/modules/fee/calculator.rs`, `src/modules/fee/distribution.rs` | Copiados, pendientes de portar (`settle`); fuera del árbol de módulos |
+| `src/modules/math/basic.rs`, `src/modules/math/safe.rs` | Copiados, pendientes de portar (`split`); fuera del árbol de módulos |
+| `src/tests/helpers.rs`, `src/tests/mod.rs` | Modificados: escrow registrado con `EscrowInit` y factory falsa |
+| `src/tests/{balance,dispute,escrow,events,fund,milestone}.rs` | Eliminados: probaban funciones del upstream que ya no existen |
+| `src/tests/{fake_factory,constructor,fund,cancel}.rs` | Nuevos |

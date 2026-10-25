@@ -1,94 +1,35 @@
 // Derived from Trustless-Work/trustlesswork-smart-contract-stellar@1d22d0c (contracts/escrow/src/error.rs), modified. See contracts/escrow/NOTICE.md
+// FIANZAS: `EscrowError` y `MilestoneError` del upstream se solapaban en los códigos. Se
+// sustituyen por un único enum con códigos únicos (docs/INTERFACES.md § 2).
 use soroban_sdk::contracterror;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
 #[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
 pub enum EscrowError {
-    EscrowAlreadyInitialized = 1,
-    EscrowNotFound = 2,
-    EscrowAlreadyReleased = 3,
-    EscrowAlreadyResolved = 4,
-    EscrowAlreadyInDispute = 5,
-    EscrowNotInDispute = 6,
-    EscrowOpenedForDisputeResolution = 7,
-    EscrowNotCompleted = 8,
-    EscrowBalanceNotEnoughToSendEarnings = 9,
-    EscrowPropertiesMismatch = 10,
-    FlagsMustBeFalse = 11,
-    AmountCannotBeZero = 12,
-    PlatformFeeTooHigh = 13,
-    InsufficientFundsForEscrowFunding = 14,
-    TooManyEscrowsRequested = 15,
-    InsufficientFundsForResolution = 16,
-    DistributionsMustEqualEscrowBalance = 17,
-    AmountsToBeTransferredShouldBePositive = 18,
-    TotalAmountCannotBeZero = 19,
-    TooManyDistributions = 20,
-    EscrowNotFullyProcessed = 21,
-    Overflow = 22,
-    Underflow = 23,
-    DivisionError = 24,
-    OnlyReleaseSignerCanReleaseEarnings = 25,
-    OnlyDisputeResolverCanExecuteThisFunction = 26,
-    UnauthorizedToChangeDisputeFlag = 27,
-    DisputeResolverCannotDisputeTheEscrow = 28,
-    OnlyAdminAddressExecuteThisFunction = 29,
-    AdminAddressCannotBeChanged = 30,
-    AdminAddressOverlapsWithOtherRole = 31,
-    ApproversListEmpty = 32,
-    ServiceProvidersListEmpty = 33,
-    ReleaseSignersListEmpty = 34,
-    DisputeResolversListEmpty = 35,
-    NoMilestoneDefined = 36,
-    TooManyMilestones = 37,
-    TargetCannotBeZero = 38,
-    PlatformAddressCannotBeChanged = 39,
-    InvalidMilestoneIndex = 40,
-    RoleLimitExceeded = 41,
-    DuplicateAddressInRole = 42,
-    DisputeResolverOverlapsWithOtherRole = 43,
-    MilestoneUpdateNotAllowedWithFunds = 44,
-    TargetExceedsApprovers = 45,
-    StringTooLong = 46,
-    Reentrancy = 47,
-    SignerMustBeApproverAndReleaseSigner = 48,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-#[contracterror]
-pub enum MilestoneError {
-    NoMilestoneDefined = 1,
-    InvalidMilestoneIndex = 2,
-    MilestoneHasAlreadyBeenApproved = 3,
-    ApproverAlreadyApprovedMilestone = 4,
-    EmptyMilestoneStatus = 5,
-    MilestoneToApproveDoesNotExist = 6,
-    MilestoneToUpdateDoesNotExist = 7,
-    BatchMilestoneUpdateEmpty = 8,
-    BatchMilestoneApproveEmpty = 9,
-    OnlyServiceProviderCanChangeMilestoneStatus = 10,
-    UnauthorizedApprover = 11,
-    EscrowNotFound = 12,
-    DuplicateMilestoneIndex = 13,
-    StringTooLong = 14,
-    BatchTooLarge = 15,
-    EscrowAlreadyReleased = 16,
-    EscrowAlreadyResolved = 17,
-}
-
-impl From<MilestoneError> for EscrowError {
-    fn from(err: MilestoneError) -> EscrowError {
-        match err {
-            MilestoneError::BatchMilestoneApproveEmpty => EscrowError::NoMilestoneDefined,
-            MilestoneError::InvalidMilestoneIndex
-            | MilestoneError::MilestoneToApproveDoesNotExist => EscrowError::InvalidMilestoneIndex,
-            MilestoneError::DuplicateMilestoneIndex => EscrowError::InvalidMilestoneIndex,
-            MilestoneError::MilestoneHasAlreadyBeenApproved
-            | MilestoneError::ApproverAlreadyApprovedMilestone => {
-                EscrowError::EscrowAlreadyReleased
-            }
-            MilestoneError::EscrowNotFound => EscrowError::EscrowNotFound,
-            _ => EscrowError::EscrowNotCompleted,
-        }
-    }
+    BadStatus = 1,
+    NotParty = 2,
+    AlreadyApproved = 3,
+    TimeoutNotReached = 4,
+    InvalidBps = 5,
+    InvalidAmount = 6,
+    DeductionTooHigh = 7,
+    VaultError = 8,
+    InvalidInvite = 9,
+    DeadlinePassed = 10,
+    SameParty = 11,
+    InvalidEndTs = 12,
+    ReportMissing = 13,
+    InvalidParty = 14,
+    IncoherentResolution = 15,
+    InsufficientBond = 16,
+    TermsMismatch = 17,
+    NotResolver = 18,
+    ReviewTimeoutNotReached = 19,
+    ReviewDeadlinePassed = 20,
+    Paused = 21,
+    Arithmetic = 22,
+    InvalidConfig = 23,
+    FactoryCall = 24,
+    VaultFeeChanged = 25,
 }
