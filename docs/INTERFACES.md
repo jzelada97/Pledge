@@ -2,7 +2,7 @@
 
 **Estado: BORRADOR v2. Se congela en G1 (hora 2).** A partir de ahí, cualquier cambio necesita un issue "Cambio de interfaz" y la aprobación del dueño de cada área afectada. Editar este archivo requiere `/lock interfaces`.
 
-Fuente: `.kiro/pipeline/architecture.md` § 6, con los ajustes pendientes de `.kiro/pipeline/security.md`. Si hay discrepancia, manda este archivo.
+Fuente: `.kiro/pipeline/architecture.md` § 6, con los ajustes de `.kiro/pipeline/security.md` § 13.6 ya aplicados. Si hay discrepancia, manda este archivo.
 
 Resumen: cada fianza es un contrato **escrow** (fork del Single-Release de Trustless Work) creado por **`FianzaFactory`**. Al fondear, el escrow deposita la fianza en un vault de **DeFindex** (por defecto, Blend Fixed Pool USDC) y, al liquidar, la retira y la reparte con `split()`.
 
@@ -25,7 +25,7 @@ Convenciones: importes `i128` en la unidad mínima del token (7 decimales) y por
 **Vinculación del inquilino invitado** (se mantiene [AD-3] y FR-2):
 1. El navegador del casero genera `code = getRandomValues(32 B)` e `invite_hash = sha256(code)`, y llama a `create_fianza(landlord, { tenant: None, invite_hash: Some(h), … })`.
 2. Enlace: `https://<dominio>/i/<id>#c=<base64url(code)>`. El **`id`** se resuelve a la dirección del escrow con `factory.escrow_of(id)`, nunca desde la URL (WEB-2 y WEB-11).
-3. El inquilino crea su passkey, lee `get_terms()`, ve las condiciones y la estrategia con su aviso de riesgo, y firma `fund_escrow(tenant, Some(code), expected_terms)`.
+3. El inquilino crea su passkey, lee `get_terms()`, ve las condiciones y la estrategia con su aviso de riesgo, y firma `fund_escrow(tenant, Some(code), expected_terms)`. Antes de pedir la passkey, el front comprueba que `terms.factory`, `terms.treasury`, `terms.dispute_resolvers`, `terms.strategy.vault` y `terms.tw_fee_bps` coinciden con `deployments/testnet.json`. Si no coinciden, no deja fondear (security WEB-14).
 4. El escrow comprueba `sha256(code) == invite_hash`, fija `tenant`, `approvers += tenant` y llama a `factory.register_tenant(id, tenant)`, que comprueba que el llamante es `escrow_of(id)` y añade el id al índice del inquilino.
 5. Si el casero conoce la dirección (`tenant: Some(t)`, `invite_hash: None`), `fund_escrow` exige `tenant == t`. Exactamente uno de los dos debe estar presente.
 
@@ -51,7 +51,8 @@ pub struct Strategy {
     pub kind: StrategyKind,
     pub vault: Option<Address>,   // Some ⇔ DeFindexVault (el vault al que deposita el escrow)
     pub asset: Address,           // token de la fianza; == config.token (USDC)
-    pub asset_name: String,       // "USDC:G…" = name() del SAC ⇒ fija CÓDIGO + EMISOR exactos (anti-falsificación)
+    pub asset_name: String,       // "USDC:G…" = name() del SAC, informativo. El control real es asset == config.token;
+                                  // deploy.mjs verifica que config.token es el SAC del emisor oficial (security N-4)
     pub defindex_strategy: Option<Address>, // estrategia subyacente del vault (informativo, para el front)
     pub apy_pool: Option<Address>,          // pool de Blend del que el front lee el supply APY en vivo
     pub risk: RiskTier,
@@ -143,7 +144,7 @@ pub struct EscrowView {
 |---|---|---|---|
 | `__constructor(init: EscrowInit)` | — (solo la despliega la factory; ver R-3) | `amount ∈ (0, MAX_AMOUNT]`; `end_ts > now`; bps válidos; `platform_fee_bps + tw_fee_bps ≤ 10000`; exactamente uno de `tenant`/`invite_hash`; `dispute_resolvers` 1–3 sin duplicados; si `tw_fee_bps > 0`, hay `tw_fee_receiver`. Si falla: `panic_with_error!` | — → `Proposed`. `approvals = {target: 2, count: 0, by: []}` |
 | `cancel()` | `terms.landlord` | `Proposed` (BadStatus) | → `Cancelled` |
-| `fund_escrow(tenant: Address, invite_code: Option<BytesN<32>>, expected_terms: Terms) -> i128` (shares) | `tenant` (+ `token.transfer(tenant, escrow, amount)` anidado) | `Proposed`; `now < end_ts` (InvalidEndTs); `expected_terms == terms` (TermsMismatch); invitación (InvalidInvite) o `tenant == fijado` (NotParty); `tenant ≠ landlord` (SameParty); partes (InvalidParty); `factory.funding_allowed(strategy.id)` (Paused); transferencia medida `== amount` (InvalidAmount); shares > 0 (VaultError) | `Proposed` → `Active` |
+| `fund_escrow(tenant: Address, invite_code: Option<BytesN<32>>, expected_terms: Terms) -> i128` (shares) | `tenant` (+ `token.transfer(tenant, escrow, amount)` anidado) | `Proposed`; `now < end_ts` (InvalidEndTs); `expected_terms == terms` (TermsMismatch); invitación (InvalidInvite) o `tenant == fijado` (NotParty); `tenant ≠ landlord` (SameParty); partes (InvalidParty); `factory.funding_allowed(strategy.id)` (Paused); transferencia medida `== amount` (InvalidAmount); shares > 0 (VaultError). Las llamadas a la factory (`funding_allowed`, `register_tenant`) van con `try_`: si fallan, FactoryCall | `Proposed` → `Active` |
 | `approve_release(approver: Address) -> Option<Settlement>` | `approver` | `approver ∈ {landlord, tenant}` (NotParty); almacenado `Active` (BadStatus); no aprobado ya (AlreadyApproved). Vale antes y después de `end_ts`, y también tras el plazo | `Active` → (al llegar a 2) `Settled`, `Approved` |
 | `stop(reason_hash: BytesN<32>)` | `terms.landlord` (+ `token.transfer(landlord, escrow, stop_bond)` anidado) | `Active` (BadStatus); el casero no aprobó (AlreadyApproved); `now ≤ timeout_at` (DeadlinePassed); `balance(landlord) ≥ stop_bond` (InsufficientBond). **La pausa no lo bloquea** | `Active` → `Stopped` |
 | `assign_expert(resolver: Address, expert_ref: BytesN<32>)` | `resolver` | `resolver ∈ dispute_resolvers` (NotResolver); `Stopped` o `UnderReview` (BadStatus). Al reasignar borra `report_hash` | → `UnderReview` |
@@ -158,6 +159,8 @@ pub struct EscrowView {
 | `get_view() -> EscrowView` | — | llama al vault con `try_` | lectura |
 | `accrued_yield() -> i128` | — | `max(preview − amount, 0)`; 0 si `NoYield`, sin fondos o con fallo | lectura |
 | `preview_settlement(deduction: i128) -> Settlement` | — | estado con fondos; mismo `split()` | lectura |
+
+**Superficie del contrato** (security N-2): el wasm del escrow exporta **exactamente** las funciones de esta tabla. No queda ninguna función del upstream de TW (`tw_new_single_release_escrow`, `initialize_escrow`, `update_escrow`, `manage_milestones`, `release_funds`, `change_milestone_status`, `approve_milestones`, `approve_and_release_milestones`, `resolve_dispute`, `dispute_escrow`, `withdraw_remaining_funds`, `extend_contract_ttl(admin, …)`, `get_escrow_by_contract_id`, `get_multiple_escrow_balances`) ni ninguna de upgrade. `scripts/` lo comprueba con `stellar contract info interface`.
 
 **Bordes temporales complementarios** (CT-4 ampliado): `Ending ⇔ Active ∧ now ≥ end_ts`; `stop ⇔ now ≤ timeout_at`; `claim_after_timeout ⇔ now > timeout_at`; `resolve ⇔ now ≤ review_deadline`; `claim_after_review_timeout ⇔ now > review_deadline`. Para un mismo `now`, nunca pueden ejecutarse a la vez dos caminos que compitan.
 
@@ -184,6 +187,7 @@ pub enum EscrowError {
     ReportMissing = 13, InvalidParty = 14, IncoherentResolution = 15, InsufficientBond = 16,
     TermsMismatch = 17, NotResolver = 18, ReviewTimeoutNotReached = 19, ReviewDeadlinePassed = 20,
     Paused = 21, Arithmetic = 22, InvalidConfig = 23,
+    FactoryCall = 24,   // una llamada a la factory falló dentro de fund_escrow (security N-1)
 }
 ```
 
@@ -335,15 +339,15 @@ fn balance(e: Env, id: Address) -> i128;
 
 ## 7. Paquetes TS: cambios respecto a la versión anterior
 
-- **§ 4 `packages/wallet`:** la interfaz `Wallet`, `WalletError`, `SignPhase`, `createWallet` y `FakeWallet` no cambian. Se mantienen los añadidos de security: `AUTH_MISMATCH`, `signatureExpirationLedger ≤ latest + 60` y `location.hostname === rpId`. **WEB-3** espera estas subinvocaciones:
+- **§ 8 `packages/wallet`:** la interfaz `Wallet`, `WalletError`, `SignPhase`, `createWallet` y `FakeWallet` no cambian. Se mantienen los añadidos de security: `AUTH_MISMATCH`, `signatureExpirationLedger ≤ latest + 60` y `location.hostname === rpId`. **WEB-3** espera estas subinvocaciones:
   - `factory.create_fianza`: ninguna.
   - `escrow.fund_escrow`: solo `token.transfer(tenant, escrow, terms.amount)`.
   - `escrow.stop`: solo `token.transfer(landlord, escrow, terms.stop_bond)`.
   - El resto: ninguna.
   - La raíz debe ser `deployments.factory`, o un escrow con `factory.id_of(addr)` válido.
-- **§ 4b `@fianzas/wallet/server`:** nueva `RelayPolicy` (§ 8.2).
-- **§ 5 y § 5b (anchor y ramp simulado):** sin cambios.
-- **§ 6 Presets:** `tenant_yield_bps` por **preset de país**. Los presets se quedan en el front y no afirman la ley.
+- **§ 8 `@fianzas/wallet/server`:** nueva `RelayPolicy` (arquitectura § 8.2, con los topes de security N-3).
+- **§ 9 (anchor y ramp simulado):** sin cambios de interfaz; se añaden las restricciones del ramp simulado.
+- **§ 10 Presets:** `tenant_yield_bps` por **preset de país**. Los presets se quedan en el front y no afirman la ley.
 
 ## 8. `packages/wallet` (P3)
 ```ts
@@ -355,7 +359,43 @@ export interface Wallet {
 }
 ```
 
-Añadidos de seguridad a la wallet: `WalletError` con un `code` estable que incluye `AUTH_MISMATCH`; antes de pedir la passkey se compara el árbol de auth con las subinvocaciones esperadas (§ 7).
+```ts
+export type WalletErrorCode =        // lista mínima; P3 la cierra en G1. P4 traduce cada código
+  | "USER_CANCELLED"      // el usuario cerró el diálogo de la passkey
+  | "WRONG_ORIGIN"        // location.hostname !== cfg.rpId (AUTH-6)
+  | "SIMULATION_FAILED"   // la simulación devolvió un error del contrato (lleva contractError)
+  | "AUTH_MISMATCH"       // el árbol de auth no es el esperado: no se firma (WEB-3)
+  | "RELAYER_DOWN"        // /api/relay o Channels no responden
+  | "RATE_LIMITED"        // 429 del handler
+  | "TX_FAILED";          // la red rechazó la transacción
+
+export class WalletError extends Error { code: WalletErrorCode; contractError?: number }
+```
+
+Reglas de `signAndSend` (security WEB-3 v2, AUTH-5):
+- Antes de pedir la passkey decodifica las auth entries de la C-address. La raíz debe ser `deployments.factory` o un escrow con `factory.id_of(addr)` válido. Las subinvocaciones deben ser **exactamente** las del § 7. Si no, `AUTH_MISMATCH` y no se firma.
+- `signatureExpirationLedger ≤ latestLedger + 60`.
+
+**`@fianzas/wallet/server` (solo servidor, `import "server-only"`):**
+```ts
+export interface RelayPolicy {
+  fixedContracts: Record<string, string[]>;   // { [factory]: ["create_fianza"] }. create_fianzas_batch NO pasa por el Relayer en la demo (N-3)
+  escrow: {
+    wasmHashes: string[];                     // deployments.escrowWasmHashesAllowed
+    factory: string;                          // la instancia debe estar registrada aquí
+    functions: string[];                      // ["cancel","fund_escrow","approve_release","stop","claim_after_timeout","claim_after_review_timeout"]
+  };
+  createContractWasmHashes: string[];         // solo smart accounts
+  maxRequestsPerMinutePerIp: number;          // 30
+  maxRequestsPerMinutePerCredential: number;  // 10
+  maxCreateFianzaPerHourPerCredential: number; // 5 (N-3)
+  globalHourlyCap: number;                    // tope por instancia, p. ej. 600
+}
+export function createRelayHandler(cfg: { policy: RelayPolicy; relayerUrl: string; apiKey: string; rpcUrl: string }): (req: Request) => Promise<Response>;
+```
+- Un escrow que no está en `fixedContracts` solo pasa si **las dos** comprobaciones dan bien: su ejecutable (`getLedgerEntries`) es un wasm de `escrow.wasmHashes` y `factory.id_of(addr)` devuelve un id. El resultado se cachea por dirección.
+- Rechaza credenciales `SOURCE_ACCOUNT`, raíces que no coinciden byte a byte con `func`, más de 4 auth entries, cuerpos de más de 64 KB y `Origin` ajeno (SRV-3, SRV-4, IV-5, CS-3). `assign_expert`, `record_report`, `resolve` y las funciones de admin **nunca** pasan por el Relayer.
+- Las respuestas solo llevan `{ code }` (SRV-8).
 
 ## 9. `packages/anchor` (P3)
 ```ts
@@ -366,6 +406,12 @@ export interface Anchor {
   isSimulated: boolean; // true en el plan B: la UI lo muestra
 }
 ```
+
+**Ramp simulado (`@fianzas/anchor/server`, plan B)** (security SRV-10…SRV-15):
+- `createSimRampHandler` lanza una excepción al construirse con la *passphrase* de mainnet.
+- Solo envía a C-address que sean smart accounts nuestros (ejecutable = `smartAccount.accountWasmHash`).
+- `amount` validado con `^\d{1,6}(\.\d{1,7})?$` y convertido con `BigInt`. Topes por petición, por dirección, por IP y global por hora. Con `RAMP_ENABLED=0` responde `403`.
+- La cuenta faucet es exclusiva (no es staff, admin, treasury ni deployer) y tiene saldo acotado.
 
 ## 10. Presets de política de yield (P4 en el front)
 | Preset | `tenant_yield_bps` |
