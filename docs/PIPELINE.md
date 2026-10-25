@@ -56,7 +56,7 @@ Regla: **cada flecha tiene un mock** desde la hora 2. Nadie espera a otro rol pa
 | P1 | Con `/lock interfaces`: cerrar firmas, eventos y errores de escrow (§ 2) y factory (§ 3). Empezar el **recorte del fork** (quitar las funciones del upstream que lista INTERFACES § 2, security N-2), `types.rs`, `error.rs` y `split` con su matriz. |
 | P2 | Revisar § 5 (vault) y § 6 (`deployments/testnet.json`). Empezar `mock-vault` con la interfaz de DeFindex. Lleva la sección API (INTERFACES § 8) al `/lock interfaces`. |
 | P3 | Cerrar § 7–§ 9: API de `packages/wallet` y `packages/anchor`, `WalletErrorCode` y `RelayPolicy`. |
-| P4 | Pantallas en baja fidelidad: creación con selector de estrategia y aviso de riesgo, aceptación del inquilino, parada con bond, backoffice y presets de política. |
+| P4 | Pantallas en baja fidelidad: creación con selector de estrategia y aviso de riesgo, aceptación del inquilino, parada con bond, backoffice y a quién va el rendimiento (lo fija la jurisdicción, sin presets: DECISIONS y #16). |
 
 **G1:** PR de `docs/INTERFACES.md` fusionado con la aprobación de los 4. A partir de aquí, cualquier cambio en INTERFACES necesita un issue "Cambio de interfaz" y la aprobación del dueño de cada área afectada.
 
@@ -85,7 +85,7 @@ Regla: **cada flecha tiene un mock** desde la hora 2. Nadie espera a otro rol pa
 | P1 | `fund_escrow` (invitación, `expected_terms`, vault, `register_tenant` con `try_`), `approve_release` + `settle` + `split`, `cancel`, lecturas, `funding_allowed`. Tests de auth y de estado, test con cuenta contrato y tests de la factory (security 13.5). |
 | P2 | `fund.mjs` (trustlines de la tesorería y del receptor del fee de TW, faucet, reserva del mock, bond de los caseros demo). `e2e/happy.mjs`. `e2e/happy.mjs` **a través de la API** (build → firma → send). API: `POST /fianzas/v1/fianzas` (crear vía factory), `fund` compatible con TW, `approve-milestones`, estrategias con APY y comisiones, preview y `/fianzas/v1/relay`. Exporta `@fianzas/api/client`. |
 | P3 | `createWallet` real con passkeys y Relayer. |
-| P4 | Panel del casero (lista paginada + precio por share), creación con estrategia y preset, flujo del inquilino con la comprobación WEB-14. |
+| P4 | Panel del casero (lista paginada + precio por share), creación con estrategia y enlace de invitación, flujo del inquilino con la comprobación WEB-14. |
 
 ## Fase 4 · Integración 1 (H10–H12) → G3
 P2 dirige la integración: redeploy, bindings regenerados y `deployments/testnet.json`. P1 fusiona y avisa a P2. P3 y P4 cambian los mocks por lo real (`NEXT_PUBLIC_USE_FAKES=0`) y crean las cuentas demo en el dominio definitivo.
