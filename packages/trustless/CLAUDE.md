@@ -1,9 +1,9 @@
 # packages/trustless · P1
 
-**Plan A:** las fianzas son escrows single-release **con rendimiento** de Trustless Work: la API v1 de single-release más un vault de DeFindex ("Guía de migración a TrustYield", 25-oct-2026). Este paquete es el cliente tipado de esa API y el mapeo de nuestro dominio (fianza, casero, inquilino, staff) a su escrow.
+**Plan A:** las fianzas son escrows single-release **con rendimiento** de Trustless Work: **TW v2 (TrustYield, con vault) con API key de v1** ("Guía de migración a TrustYield", 25-oct-2026). Este paquete es el cliente tipado de esa API y el mapeo de nuestro dominio (fianza, casero, inquilino, staff) a su escrow.
 
 ## API de Trustless Work
-- Base: `https://trustless-backend-production.up.railway.app` (Swagger en `/docs`). Cabecera `x-api-key`. Es una key **propia de esta API** (la de v1/v2 da 401). Va en `.env.local` (`TW_API_KEY`), nunca en el repo ni en el navegador: el cliente se usa desde el servidor (`apps/api`).
+- Base: `https://trustless-backend-production.up.railway.app` (Swagger en `/docs`). Cabecera `x-api-key` con una **API key de v1** emitida para este backend (la de `beta.api.trustlesswork.com` da 401). Las rutas no llevan `/v2`. Va en `.env.local` (`TW_API_KEY`), nunca en el repo ni en el navegador: el cliente se usa desde el servidor (`apps/api`).
 - Cada escritura devuelve `{ unsignedTransaction }`: una transacción cuya **cuenta origen es el firmante del rol**. La firma esa cuenta y se envía con `POST /helper/send-transaction { signedXdr }`, que **no patrocina**: la comisión la paga la cuenta origen.
 - **Una passkey (C-address) no puede ser firmante en la API** (400 `invalid version byte`, issue #61), aunque sí puede tener roles: solo firma *auth entries*, no el sobre. Las acciones que firma una passkey (`fund_escrow`, `approve_milestone`, `release_funds`, `dispute_escrow`) se construyen contra el contrato y van, patrocinadas, por el Relayer de `packages/wallet` (`externalEscrows` y `trustless.feeAddress`, #66).
 - Lecturas con arrays: `?contractIds[]=C…` / `?addresses[]=C…`, también con un solo valor.
@@ -12,7 +12,7 @@
 - Activo: USDC de **Blend** en testnet (emisor `GATALTGT…5V56`). Necesitan trustline quien fondea, el receptor y `platformAddress` (**aunque `platformFee = 0`**: comprobado).
 
 ## Mapeo (src/fianza.ts)
-- Roles v1, uno por rol: `approver` = `serviceProvider` = casero; `releaseSigner` = `receiver` = inquilino; `platformAddress` = tesorería (cobra `platformFee` **y puede actualizar el escrow**: es una cuenta de la plataforma); `disputeResolver` = staff.
+- Roles con una dirección cada uno (así es el escrow de TrustYield en testnet, wasm `828ae584…4b95`): `approver` = `serviceProvider` = casero; `releaseSigner` = `receiver` = inquilino; `platformAddress` = tesorería (cobra `platformFee` **y puede actualizar el escrow**: es una cuenta de la plataforma); `disputeResolver` = staff.
 - "Aprobar devolución" = dos pasos: el casero aprueba el hito (`approve-milestone`, índice `"0"`) y el inquilino libera (`release-funds`). Al liberar se paga capital + rendimiento menos comisiones.
 - Parar = `dispute-escrow` del casero. Resolver = `resolve-dispute` repartiendo el **importe fondeado** (deducción al casero, resto al inquilino); el rendimiento que sobra se reparte con `withdraw-remaining-funds` según la jurisdicción.
 - `signer` del deploy: por defecto la tesorería (cuenta G de la plataforma), porque las partes pueden ser passkeys.
