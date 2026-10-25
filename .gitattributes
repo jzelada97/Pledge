@@ -1,0 +1,4 @@
+# LF en todo el repo: los hooks de shell con CRLF no funcionan en macOS/Linux.
+* text=auto eol=lf
+.githooks/* text eol=lf
+*.sh text eol=lf

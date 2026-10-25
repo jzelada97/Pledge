@@ -1,0 +1,34 @@
+name: Bloqueo
+description: Estoy parado esperando algo de otra persona
+title: "[BLOQUEO] "
+labels: [bloqueado]
+body:
+  - type: input
+    id: quien
+    attributes:
+      label: ¿A quién esperas?
+      description: Rol y @usuario. Asígnale también el issue.
+      placeholder: P1 @usuario
+    validations:
+      required: true
+  - type: textarea
+    id: necesito
+    attributes:
+      label: Qué necesito exactamente
+      description: Lo mínimo que te desbloquea (una firma, un deploy, una decisión…).
+    validations:
+      required: true
+  - type: textarea
+    id: mock
+    attributes:
+      label: Qué hago mientras tanto
+      description: El mock o la tarea alternativa con la que sigues. Nadie se queda parado más de 15 minutos.
+    validations:
+      required: true
+  - type: dropdown
+    id: urgencia
+    attributes:
+      label: Urgencia
+      options: [Me para del todo, Puedo seguir con mock, Solo afecta a la integración]
+    validations:
+      required: true

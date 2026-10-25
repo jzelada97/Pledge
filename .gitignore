@@ -1,0 +1,26 @@
+# Harness: el rol es de cada clon
+harness/.role
+
+# Secretos
+.env
+.env.local
+**/.env.local
+
+# Rust / Soroban
+target/
+.stellar/
+*.wasm
+
+# Node
+node_modules/
+.next/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# Claude Code: ajustes personales de cada uno
+.claude/settings.local.json
+
+# Sistema
+.DS_Store
+Thumbs.db

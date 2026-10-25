@@ -1,0 +1,3 @@
+#!/bin/sh
+# Valida el formato del mensaje (Conventional Commits con scope de área).
+exec node "$(git rev-parse --show-toplevel)/scripts/harness/check-commit-msg.mjs" "$1"

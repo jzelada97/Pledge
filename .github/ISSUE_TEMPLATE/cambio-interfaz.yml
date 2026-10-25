@@ -1,0 +1,35 @@
+name: Cambio de interfaz
+description: Propuesta de cambio en docs/INTERFACES.md (firmas, eventos, tipos, APIs)
+title: "[INTERFAZ] "
+labels: [cambio-interfaz]
+body:
+  - type: textarea
+    id: cambio
+    attributes:
+      label: Cambio propuesto
+      description: Antes → después, con el código exacto.
+      render: rust
+    validations:
+      required: true
+  - type: textarea
+    id: motivo
+    attributes:
+      label: Por qué
+    validations:
+      required: true
+  - type: checkboxes
+    id: afecta
+    attributes:
+      label: Áreas afectadas (sus dueños tienen que aprobar)
+      options:
+        - label: P1 escrow
+        - label: P2 vault / adapter / bindings / scripts
+        - label: P3 wallet / anchor
+        - label: P4 web / backoffice
+  - type: dropdown
+    id: rompe
+    attributes:
+      label: ¿Rompe a quien ya lo usa?
+      options: [No, Sí, y propongo cómo migrar]
+    validations:
+      required: true

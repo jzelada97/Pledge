@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  harness:
+    name: harness
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Propiedad, rama y título del PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+        run: node scripts/harness/check-ownership.mjs
+      - name: Mensajes de commit
+        run: |
+          status=0
+          for sha in $(git rev-list origin/${{ github.base_ref }}..HEAD --no-merges); do
+            git log -1 --format=%B "$sha" > /tmp/msg
+            node scripts/harness/check-commit-msg.mjs /tmp/msg || { echo "  ↳ commit $sha"; status=1; }
+          done
+          exit $status
+
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust
+        if: hashFiles('Cargo.toml') != ''
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        if: hashFiles('Cargo.toml') != ''
+      - name: Contratos (fmt, clippy, tests)
+        if: hashFiles('Cargo.toml') != ''
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+      - uses: pnpm/action-setup@v4
+        if: hashFiles('pnpm-lock.yaml') != ''
+      - uses: actions/setup-node@v4
+        if: hashFiles('pnpm-lock.yaml') != ''
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Front (typecheck, lint, tests)
+        if: hashFiles('pnpm-lock.yaml') != ''
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm -r --if-present typecheck
+          pnpm -r --if-present lint
+          pnpm -r --if-present test
+      - name: Nada que probar todavía
+        if: hashFiles('Cargo.toml') == '' && hashFiles('pnpm-lock.yaml') == ''
+        run: echo "Aún no hay Cargo.toml ni pnpm-lock.yaml."

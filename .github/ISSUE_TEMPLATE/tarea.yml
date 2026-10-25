@@ -1,0 +1,30 @@
+name: Tarea
+description: Una unidad de trabajo de un rol (cabe en un PR de < 300 líneas)
+title: "[P?] "
+body:
+  - type: dropdown
+    id: rol
+    attributes:
+      label: Rol
+      options: [P1 · Contrato escrow, P2 · DeFi + infra, P3 · Onboarding sin cripto, P4 · UX/UI + pitch]
+    validations:
+      required: true
+  - type: dropdown
+    id: fase
+    attributes:
+      label: Fase (docs/PIPELINE.md)
+      options: [0 Harness, 1 Interfaces, 2 Spikes, 3 Construcción, 4 Integración 1, 5 Parada y anchor, 6 Integración 2, 7 Pulido y entrega]
+    validations:
+      required: true
+  - type: textarea
+    id: hecho
+    attributes:
+      label: Hecho cuando
+      description: Criterio comprobable. Ej. "cargo test -p escrow approve_release pasa con los 3 casos".
+    validations:
+      required: true
+  - type: textarea
+    id: depende
+    attributes:
+      label: Depende de
+      description: Issues o piezas de otros roles, y qué mock usas mientras tanto.
