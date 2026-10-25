@@ -10,6 +10,7 @@
   "areas": [
     { "id": "escrow", "owner": "P1", "paths": ["contracts/escrow/**"], "scopes": ["escrow"] },
     { "id": "factory", "owner": "P1", "paths": ["contracts/factory/**"], "scopes": ["factory"] },
+    { "id": "trustless", "owner": "P1", "paths": ["packages/trustless/**"], "scopes": ["trustless"] },
     { "id": "vault", "owner": "P2", "paths": ["contracts/mock-vault/**", "contracts/yield-adapter/**"], "scopes": ["vault", "adapter"] },
     { "id": "bindings", "owner": "P2", "paths": ["packages/bindings/**"], "scopes": ["bindings"], "generated": true },
     { "id": "scripts", "owner": "P2", "paths": ["scripts/deploy/**", "scripts/e2e/**", "scripts/fund/**", "scripts/bindings.sh", "deployments/**"], "scopes": ["scripts"] },
