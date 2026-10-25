@@ -1,37 +1,90 @@
+import { ArrowRightIcon, BuildingIcon, KeyRoundIcon, LandmarkIcon, ShieldCheckIcon, SproutIcon } from "lucide-react";
 import Link from "next/link";
-import { Box, Note, Screen } from "@/components/wire";
+import { SiteHeader } from "@/components/site-header";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
-const SCREENS = [
-  { href: "/landlord", title: "Landlord dashboard", who: "Landlord · desktop" },
-  { href: "/landlord/new", title: "Create a deposit", who: "Landlord · desktop" },
-  { href: "/landlord/deposits/3", title: "Deposit detail: approve or stop", who: "Landlord · desktop" },
-  { href: "/i/1", title: "Invitation: accept and pay", who: "Tenant · mobile" },
-  { href: "/i/2", title: "Invitation no longer valid", who: "Tenant · mobile" },
-  { href: "/tenant", title: "My deposit", who: "Tenant · mobile" },
+const POINTS = [
+  { icon: ShieldCheckIcon, title: "Returned in full", body: "When the landlord and the tenant both approve, the whole deposit goes back to the tenant." },
+  { icon: SproutIcon, title: "Earns while it waits", body: "The deposit earns a variable yield while it is held. Only that yield is split." },
+  { icon: LandmarkIcon, title: "Fair if there's a dispute", body: "An independent expert reviews any stop. If nobody responds in time, the tenant gets it back." },
 ];
 
 export default function Home() {
   return (
-    <Screen
-      title="Fianzas · low-fidelity screens"
-      note="Wireframes with fixture data. No real accounts or contracts yet. The staff backoffice runs on port 3001."
-    >
-      <Box title="Screens">
-        <ul className="flex flex-col gap-2">
-          {SCREENS.map((s) => (
-            <li key={s.href} className="flex justify-between gap-4 text-sm">
-              <Link href={s.href} className="font-medium underline">
-                {s.title}
-              </Link>
-              <span className="text-neutral-500">{s.who}</span>
-            </li>
-          ))}
-        </ul>
-      </Box>
-      <Note>
-        When the landlord and the tenant both approve the release, the deposit goes back to the tenant in full. Only the
-        variable yield is split.
-      </Note>
-    </Screen>
+    <>
+      <SiteHeader />
+      <main className="mx-auto flex max-w-6xl flex-col gap-12 px-4 py-12 sm:px-6 sm:py-16">
+        <section className="max-w-2xl space-y-4">
+          <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
+            Room deposits that come back in full
+          </h1>
+          <p className="text-lg text-muted-foreground">
+            Fianzas holds your tenant&apos;s deposit until the contract ends. When you both approve, it goes back with one
+            tap from each side.
+          </p>
+        </section>
+
+        <section aria-labelledby="choose-role" className="space-y-4">
+          <h2 id="choose-role" className="sr-only">
+            Choose how you use Fianzas
+          </h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <BuildingIcon className="size-6 text-primary" aria-hidden />
+                <CardTitle className="text-xl">I&apos;m a landlord</CardTitle>
+                <CardDescription>Create deposits, send invitations and approve releases.</CardDescription>
+              </CardHeader>
+              <CardFooter className="justify-end">
+                <Button asChild>
+                  <Link href="/landlord">
+                    Go to my deposits
+                    <ArrowRightIcon data-icon="inline-end" aria-hidden />
+                  </Link>
+                </Button>
+              </CardFooter>
+            </Card>
+            <Card>
+              <CardHeader>
+                <KeyRoundIcon className="size-6 text-primary" aria-hidden />
+                <CardTitle className="text-xl">I&apos;m a tenant</CardTitle>
+                <CardDescription>Pay your deposit from your bank and see when it comes back.</CardDescription>
+              </CardHeader>
+              <CardFooter className="justify-end gap-2">
+                <Button asChild variant="outline">
+                  <Link href="/i/1">Open my invitation</Link>
+                </Button>
+                <Button asChild>
+                  <Link href="/tenant">
+                    My deposits
+                    <ArrowRightIcon data-icon="inline-end" aria-hidden />
+                  </Link>
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+        </section>
+
+        <section aria-labelledby="how-it-works" className="space-y-4">
+          <h2 id="how-it-works" className="text-xl font-semibold tracking-tight">
+            How it works
+          </h2>
+          <ul className="grid gap-4 md:grid-cols-3">
+            {POINTS.map((p) => (
+              <li key={p.title}>
+                <Card className="h-full">
+                  <CardContent className="space-y-2">
+                    <p.icon className="size-5 text-primary" aria-hidden />
+                    <h3 className="font-semibold">{p.title}</h3>
+                    <p className="text-sm text-muted-foreground">{p.body}</p>
+                  </CardContent>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </main>
+    </>
   );
 }
