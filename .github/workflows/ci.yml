@@ -55,12 +55,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: wasm32v1-none
       - uses: Swatinem/rust-cache@v2
         if: hashFiles('Cargo.toml') != ''
-      - name: Contratos (fmt, clippy, tests)
+      - name: Contratos (fmt, wasm, clippy, tests)
         if: hashFiles('Cargo.toml') != ''
+        # El wasm se compila ANTES de los tests: la factory importa el wasm del escrow
+        # (contractimport!) desde target/wasm32v1-none/release/.
         run: |
           cargo fmt --all -- --check
+          cargo build --workspace --release --target wasm32v1-none
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
       - uses: pnpm/action-setup@v4
@@ -68,7 +72,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: hashFiles('pnpm-lock.yaml') != ''
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
       - name: Front (typecheck, lint, tests)
         if: hashFiles('pnpm-lock.yaml') != ''
