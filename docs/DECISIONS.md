@@ -28,9 +28,8 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - Decide: P4 · Implementa: P4
 
 ## 2026-10-25 · Vuelta al fork de Trustless Work (sustituye a "Escrow propio")
-- **Decisión:** el escrow vuelve a ser un **fork del Single-Release v2 de Trustless Work** (`single-release-develop-v2` @ `1d22d0c`, con v1 @ `f0b706e` como plan B), con el permiso explícito de Trustless Work para copiarlo y modificarlo. Se cambian los roles y se añade el movimiento escrow → DeFindex → escrow → reparto. Se recupera `NOTICE.md` con el permiso.
-- **Motivo:** decisión del equipo. Trustless Work ha dado permiso y su V2 aún no está publicada. Partir de su código auditado (v1, Runtime Verification) es mejor que escribirlo desde cero, y el pitch puede decir "construido sobre Trustless Work, con permiso".
-- **Condición (cumplida el 2026-10-25):** el equipo tiene el permiso escrito de Trustless Work para copiar, modificar y publicar su código en este repositorio público. La atribución queda en `contracts/escrow/NOTICE.md` y en la cabecera de cada archivo copiado.
+- **Decisión:** el escrow vuelve a ser un **fork del Single-Release v2 de Trustless Work** (`single-release-develop-v2` @ `1d22d0c`, con v1 @ `f0b706e` como plan B). Se cambian los roles y se añade el movimiento escrow → DeFindex → escrow → reparto. Se recupera `NOTICE.md` con la atribución.
+- **Motivo:** decisión del equipo. La V2 de Trustless Work aún no está publicada. Partir de su código auditado (v1, Runtime Verification) es mejor que escribirlo desde cero, y el pitch puede decir "construido sobre Trustless Work".
 - **Sustituye a:** "Escrow propio, sin fork de Trustless Work" (PR #5, revertido).
 - Decide: equipo · Implementa: P1
 
@@ -60,10 +59,10 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 ## 2026-10-25 · Escrow propio, sin fork de Trustless Work (**sustituida** por "Vuelta al fork de Trustless Work")
 - **Decisión:** el escrow se escribe **desde cero**. No se copia ni se modifica código de Trustless Work. Se mantienen la factory, un contrato por fianza, el vault de DeFindex y todas las firmas de `docs/INTERFACES.md`.
 - **Consecuencias:**
-  - No hay `NOTICE` de TW, ni permiso que registrar, ni cabeceras de origen.
+  - No hay `NOTICE` de TW ni cabeceras de origen.
   - Desaparece el fee de TW (`tw_fee_bps`, `tw_fee_receiver`, `Settlement.to_tw`) y `get_roles()`.
   - El pitch no dice "construido sobre Trustless Work".
-- **Motivo:** evita depender de un permiso sin licencia publicada en un repositorio público, y quita código que no necesitamos (milestones, reparto libre, funciones de admin).
+- **Motivo:** quita código que no necesitamos (milestones, reparto libre, funciones de admin).
 - **Sustituye a:** "Escrow: fork de Trustless Work + DeFindex + factory" (más abajo).
 - Decide: equipo · Implementa: P1
 
@@ -93,7 +92,7 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ## 2026-10-25 · Escrow: fork de Trustless Work + DeFindex + factory (vigente de nuevo; ver "Vuelta al fork")
 - **Decisión:**
-  - El escrow parte del contrato de **Trustless Work** (Single-Release), con su permiso explícito para copiarlo y modificarlo (ver `NOTICE.md`).
+  - El escrow parte del contrato de **Trustless Work** (Single-Release) (ver `NOTICE.md`).
   - Lo modificamos para que, al fondear, el dinero vaya a un vault de DeFindex, y para que al liberar o resolver se retire y se reparta.
   - Un contrato **`FianzaFactory`** crea un escrow por fianza, con el patrón de despliegue `tw_new_single_release_escrow` que ya trae Trustless Work. También lleva un registro de estrategias, la configuración global y los índices por casero e inquilino.
 - **Descartado:**
@@ -138,4 +137,3 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - [x] Kit de passkeys: smart-account-kit (P3)
 - [ ] Anchor: testanchor con SEP-45 o ramp simulado (P3)
 - [ ] Quién asume una pérdida del vault más allá del rendimiento (equipo, antes de G1)
-- [x] Permiso de Trustless Work para un repo público: lo tiene el equipo por escrito. Atribución en `contracts/escrow/NOTICE.md` (equipo)

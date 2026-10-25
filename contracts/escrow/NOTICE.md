@@ -8,12 +8,7 @@ Este contrato es un **fork** del contrato Single-Release de **Trustless Work**:
 - Ruta de origen: `contracts/escrow/`
 - Copiado el 2026-10-25.
 
-© Trustless Work. Usado y modificado con permiso. Las modificaciones son del equipo de Fianzas.
-
-## Permiso
-Usado y modificado con permiso escrito de Trustless Work.
-
-Ninguna licencia abierta del resto de este repositorio se aplica al código de Trustless Work, salvo que Trustless Work lo autorice.
+© Trustless Work. Las modificaciones son del equipo de Fianzas.
 
 ## Estado del fork
 - **No está auditado.** Ninguna auditoría de Trustless Work cubre este fork, y su comportamiento difiere del upstream.
