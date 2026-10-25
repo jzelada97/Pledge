@@ -15,7 +15,6 @@ const EXAMPLE_APY = 0.065; // placeholder for the live APY read from Strategy.ap
 export default function NewDeposit() {
   const [amount, setAmount] = useState(1200);
   const [months, setMonths] = useState(12);
-  const [invite, setInvite] = useState(true);
   const [tenantBps, setTenantBps] = useState(10000);
   const [strategyId, setStrategyId] = useState(DEFAULT_STRATEGY_ID);
 
@@ -53,14 +52,14 @@ export default function NewDeposit() {
       </Box>
 
       <Box title="2 · Tenant">
-        <label className="flex items-center gap-2 text-sm">
-          <input type="radio" checked={invite} onChange={() => setInvite(true)} /> Send an invitation link
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="radio" checked={!invite} onChange={() => setInvite(false)} /> I already have the tenant&apos;s
-          account
-        </label>
-        <Note>The invitation code is generated in this browser and only travels in the link (#c=…).</Note>
+        <p className="text-sm">
+          You&apos;ll get an invitation link to send to your tenant. They pay the deposit through that link, whether or
+          not they already have an account.
+        </p>
+        <Note>
+          Always invite_hash, never a known tenant address. The invitation code is generated in this browser and only
+          travels in the link (#c=…).
+        </Note>
       </Box>
 
       <Box title="3 · Who gets the yield">
@@ -81,7 +80,7 @@ export default function NewDeposit() {
         <Row label="· Your share of the yield" value={money(b.landlordYield)} />
         <Row label="Good-faith deposit if you stop the release" value={money(bond)} />
         <Note>Example only: the yield is variable and can be lower, or zero.</Note>
-        <SignButton label={invite ? "Create and get the invitation link" : "Create deposit"} disabled={amount <= 0} />
+        <SignButton label="Create and get the invitation link" disabled={amount <= 0} />
       </Box>
     </Screen>
   );
