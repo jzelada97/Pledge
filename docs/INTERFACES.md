@@ -620,7 +620,7 @@ export interface WalletConfig {
   isRegisteredEscrow(addr: string): Promise<boolean>; // factory.id_of(addr) no da NotFound
   trustless?: {                     // plan A: escrows con rendimiento de Trustless Work (API v1 + vault)
     isEscrow(addr: string): Promise<boolean>; // su wasm está en la lista permitida (testnet: 828ae584…4b95)
-    feeAddress: string;             // dirección de la comisión de TW: release_funds la recibe como argumento
+    feeAddress: string;             // comisión de TW (release_funds la recibe como argumento). Testnet: GBPUACN7QETR4TCYTKINBDHTYTFXD3BQQV7VSMZC5CX74E4MTUL2AMUB
   };
 }
 export function createWallet(cfg: WalletConfig): Wallet; // lanza WRONG_ORIGIN si location.hostname !== rpId
