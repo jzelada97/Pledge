@@ -13,6 +13,7 @@
     { "id": "vault", "owner": "P2", "paths": ["contracts/mock-vault/**", "contracts/yield-adapter/**"], "scopes": ["vault", "adapter"] },
     { "id": "bindings", "owner": "P2", "paths": ["packages/bindings/**"], "scopes": ["bindings"], "generated": true },
     { "id": "scripts", "owner": "P2", "paths": ["scripts/deploy/**", "scripts/e2e/**", "scripts/fund/**", "scripts/bindings.sh", "deployments/**"], "scopes": ["scripts"] },
+    { "id": "api", "owner": "P2", "paths": ["apps/api/**", "apps/web/app/api/**"], "scopes": ["api"] },
     { "id": "wallet", "owner": "P3", "paths": ["packages/wallet/**"], "scopes": ["wallet"] },
     { "id": "anchor", "owner": "P3", "paths": ["packages/anchor/**"], "scopes": ["anchor"] },
     { "id": "web", "owner": "P4", "paths": ["apps/web/**"], "scopes": ["web"] },

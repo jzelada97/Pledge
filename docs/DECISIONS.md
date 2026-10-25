@@ -27,6 +27,26 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - **Descartado:** la opción "ya tengo la cuenta del inquilino". Un solo camino es más simple para el casero y para la demo.
 - Decide: P4 · Implementa: P4
 
+## 2026-10-25 · Vuelta al fork de Trustless Work (sustituye a "Escrow propio")
+- **Decisión:** el escrow vuelve a ser un **fork del Single-Release v2 de Trustless Work** (`single-release-develop-v2` @ `1d22d0c`, con v1 @ `f0b706e` como plan B), con el permiso explícito de Trustless Work para copiarlo y modificarlo. Se cambian los roles y se añade el movimiento escrow → DeFindex → escrow → reparto. Se recupera `NOTICE.md` con el permiso.
+- **Motivo:** decisión del equipo. Trustless Work ha dado permiso y su V2 aún no está publicada. Partir de su código auditado (v1, Runtime Verification) es mejor que escribirlo desde cero, y el pitch puede decir "construido sobre Trustless Work, con permiso".
+- **Condición:** el permiso tiene que cubrir un **repositorio público** y quedar registrado en `NOTICE.md` (enlace, fecha y persona de Trustless Work).
+- **Sustituye a:** "Escrow propio, sin fork de Trustless Work" (PR #5, revertido).
+- Decide: equipo · Implementa: P1
+
+## 2026-10-25 · API propia compatible con la Core API v2 de Trustless Work
+- **Decisión:** `apps/api` (P2, Hono montado en `apps/web`) implementa con la **misma ruta y la misma forma** los endpoints de Trustless Work que encajan (fund, approve, extend-ttl, send-transaction y lecturas). Los que cambian de semántica (dispute → `stop` con bond, resolve-dispute → `resolve` con `stop_justified`) van a `/fianzas/v1` y la ruta de Trustless Work responde `501` remitiendo a la nueva. Lo nuevo (crear fianza vía factory, estrategias, comisiones, preview, claims, relay) también va en `/fianzas/v1`. Detalle: arquitectura § 6.8 e INTERFACES § 8.
+- **Motivo:** la API de Trustless Work solo sirve su propia revisión del contrato, y la nuestra es un fork. La compatibilidad permite usar su SDK y sus Blocks.
+- **SDK:** `@trustless-work/escrow-js` para los endpoints compatibles, con nuestra `baseUrl`, y el cliente propio `@fianzas/api/client` (lo exporta `apps/api`, de P2) para `/fianzas/v1`. Si en el spike el SDK no acepta nuestra `baseUrl` o los campos extra, se usa solo el cliente propio.
+- Decide: equipo · Implementa: P2
+
+## 2026-10-25 · Comisiones de DeFindex y vault propio
+- **Decisión:** DeFindex cobra **sobre lo generado en su pool**, y esa comisión se reparte entre DeFindex (`defindex_protocol_fee`) y nosotros (`vault_fee`, que va al `fee_receiver` del vault, es decir, a la tesorería). Es una **fuente de ingresos adicional** a nuestro `platform_fee_bps` del escrow.
+- **Vault propio también en testnet:** lo crea P2 con la factory de DeFindex sobre `USDC_blend_strategy`, y la plataforma es su manager (`config.vault_manager = Some(...)` también en testnet). `usdc_paltalabs_vault` queda solo como plan B del spike.
+- **Fijado al crear:** el factory lee `get_fees()` y guarda `defindex_vault_fee_bps` y `defindex_protocol_fee_bps` en los `Terms`. El vault ya las descuenta del rendimiento, así que `split()` no las vuelve a restar. `fund_escrow` rechaza el fondeo si la comisión ha subido (`VaultFeeChanged`). Una subida nunca bloquea un retiro.
+- **Pendiente:** confirmar en el spike sobre qué base exacta calcula DeFindex su comisión de protocolo. En el PoC se fijarán los números: `vault_fee` y `platform_fee_bps` a la vez, para no cobrar dos veces lo mismo sin querer.
+- Decide: equipo · Implementa: P2 (vault) y P1 (Terms)
+
 ## 2026-10-25 · Kit de passkeys: smart-account-kit + Relayer propio
 - **Decisión:** `smart-account-kit` **0.8.0** (cuentas de OpenZeppelin con passkey) con `@stellar/stellar-sdk` **16.4.1** (el kit exige `^16.3`). El kit envía `{ func, auth }` a nuestro `/api/relay` (`createRelayHandler` de `@fianzas/wallet/server`), que valida con la `RelayPolicy` y reenvía a OpenZeppelin Channels por HTTP (sin `@openzeppelin/relayer-plugin-channels`, que arrastra otra versión del SDK).
 - **Datos de testnet** (comprobados on-chain el 25-oct-2026, protocolo 29), para `deployments/testnet.json`:
@@ -37,7 +57,7 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - **Pendiente del spike en navegador:** crear una cuenta con passkey y firmar `fund_escrow` contra una instancia de la factory (cuando P1 y P2 desplieguen).
 - Decide: P3
 
-## 2026-10-25 · Escrow propio, sin fork de Trustless Work
+## 2026-10-25 · Escrow propio, sin fork de Trustless Work (**sustituida** por "Vuelta al fork de Trustless Work")
 - **Decisión:** el escrow se escribe **desde cero**. No se copia ni se modifica código de Trustless Work. Se mantienen la factory, un contrato por fianza, el vault de DeFindex y todas las firmas de `docs/INTERFACES.md`.
 - **Consecuencias:**
   - No hay `NOTICE` de TW, ni permiso que registrar, ni cabeceras de origen.
@@ -71,7 +91,7 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - **Regla:** ninguna estrategia se describe como "0 riesgo" ni "sin riesgo".
 - Decide: equipo · Revisa: P2
 
-## 2026-10-25 · Escrow: fork de Trustless Work + DeFindex + factory (**sustituida** por "Escrow propio")
+## 2026-10-25 · Escrow: fork de Trustless Work + DeFindex + factory (vigente de nuevo; ver "Vuelta al fork")
 - **Decisión:**
   - El escrow parte del contrato de **Trustless Work** (Single-Release), con su permiso explícito para copiarlo y modificarlo (ver `NOTICE.md`).
   - Lo modificamos para que, al fondear, el dinero vaya a un vault de DeFindex, y para que al liberar o resolver se retire y se reparta.
@@ -111,7 +131,11 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - Decide: equipo
 
 ## Pendientes en G2 (hora 3)
-- [ ] Vault de DeFindex en testnet para Fixed USDC y cómo fondearlo (P2)
+- [ ] Base del fork de Trustless Work: v2 `1d22d0c` o v1 `f0b706e` (P1)
+- [ ] Vault propio de DeFindex en testnet sobre `USDC_blend_strategy` y cómo fondearlo (P2)
+- [ ] ¿`@trustless-work/escrow-js` acepta nuestra `baseUrl` y los campos extra? (P2)
+- [ ] Base de cálculo de la comisión de protocolo de DeFindex (P2)
 - [x] Kit de passkeys: smart-account-kit (P3)
 - [ ] Anchor: testanchor con SEP-45 o ramp simulado (P3)
 - [ ] Quién asume una pérdida del vault más allá del rendimiento (equipo, antes de G1)
+- [ ] Registrar en `NOTICE.md` el permiso de Trustless Work para un repo público (equipo, antes de copiar el código)
