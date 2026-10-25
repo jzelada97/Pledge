@@ -1,4 +1,4 @@
-import { ChevronRightIcon, FolderOpenIcon, PlusIcon } from "lucide-react";
+import { BellIcon, ChevronRightIcon, FolderOpenIcon, LandmarkIcon, SproutIcon } from "lucide-react";
 import Link from "next/link";
 import { DevNote } from "@/components/dev-note";
 import { PageHeader } from "@/components/page-header";
@@ -23,9 +23,9 @@ export default async function LandlordDashboard({ searchParams }: PageProps<"/la
 
   const held = deposits.filter((d) => d.status !== "Proposed" && d.status !== "Settled" && d.status !== "Cancelled");
   const stats = [
-    { label: "Deposits held", value: money(held.reduce((s, d) => s + d.data.terms.amount, 0n)), hint: `${held.length} held` },
-    { label: "Yield so far", value: money(held.reduce((s, d) => s + d.accrued_yield, 0n)), hint: "Estimated, variable" },
-    { label: "Need your answer", value: String(deposits.filter(needsAction).length), hint: "Contract ended" },
+    { icon: LandmarkIcon, label: "Deposits held", value: money(held.reduce((s, d) => s + d.data.terms.amount, 0n)), hint: `Across ${held.length} deposits` },
+    { icon: SproutIcon, label: "Yield so far", value: money(held.reduce((s, d) => s + d.accrued_yield, 0n)), hint: "Estimated, variable" },
+    { icon: BellIcon, label: "Need your answer", value: String(deposits.filter(needsAction).length), hint: "Contract ended, waiting for you" },
   ];
 
   return (
@@ -33,14 +33,6 @@ export default async function LandlordDashboard({ searchParams }: PageProps<"/la
       <PageHeader
         title="Deposits"
         lead="Every room deposit you hold, and what each one needs from you."
-        actions={
-          <Button asChild>
-            <Link href="/landlord/new">
-              <PlusIcon data-icon="inline-start" aria-hidden />
-              New deposit
-            </Link>
-          </Button>
-        }
       />
 
       {deposits.length === 0 ? (
@@ -59,17 +51,24 @@ export default async function LandlordDashboard({ searchParams }: PageProps<"/la
           </EmptyContent>
         </Empty>
       ) : (
-        <>
-          <section aria-label="Summary" className="grid gap-4 sm:grid-cols-3">
-            {stats.map((s) => (
-              <Card key={s.label}>
-                <CardHeader>
-                  <CardDescription>{s.label}</CardDescription>
-                  <CardTitle className="text-2xl tabular-nums">{s.value}</CardTitle>
-                  <p className="text-xs text-muted-foreground">{s.hint}</p>
-                </CardHeader>
-              </Card>
-            ))}
+        <div className="flex flex-col gap-10">
+          {/* Stats: one tinted panel, so they don't read as deposit cards */}
+          <section aria-labelledby="overview-title" className="space-y-3">
+            <h2 id="overview-title" className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+              Overview
+            </h2>
+            <dl className="grid divide-y divide-accent-foreground/15 rounded-xl bg-accent text-accent-foreground sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+              {stats.map((s) => (
+                <div key={s.label} className="space-y-1 p-6">
+                  <dt className="flex items-center gap-2 text-sm font-medium">
+                    <s.icon className="size-4 text-primary" aria-hidden />
+                    {s.label}
+                  </dt>
+                  <dd className="text-3xl font-semibold tracking-tight tabular-nums">{s.value}</dd>
+                  <dd className="text-xs">{s.hint}</dd>
+                </div>
+              ))}
+            </dl>
           </section>
 
           <DevNote>
@@ -77,41 +76,49 @@ export default async function LandlordDashboard({ searchParams }: PageProps<"/la
             share, one read per vault, refreshed every 5 s.
           </DevNote>
 
-          <ul aria-label="Your deposits" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {deposits.map((d) => (
-              <li key={d.id.toString()}>
-                <Link
-                  href={`/landlord/deposits/${d.id}`}
-                  aria-label={`Deposit #${d.id}, ${money(d.data.terms.amount)}, ${STATUS_LABEL[d.status]}`}
-                  className="group block h-full rounded-xl focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                >
-                  <Card className="h-full transition-colors group-hover:border-primary/40 group-hover:bg-accent/40">
-                    <CardHeader>
-                      <div className="flex items-start justify-between gap-2">
-                        <CardDescription>Deposit #{d.id.toString()}</CardDescription>
-                        <StatusBadge status={d.status} />
-                      </div>
-                      <CardTitle className="text-2xl tabular-nums">{money(d.data.terms.amount)}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-1">
-                      <DetailList>
-                        <DetailRow label="Contract end" value={daysFromNow(d.data.terms.end_ts)} />
-                        <DetailRow label="Yield so far" value={yieldText(d)} />
-                        {live(d) && <DetailRow label="Tenant can claim" value={daysFromNow(d.timeout_at)} />}
-                        <DetailRow label="Kept in" value={STRATEGY_COPY[d.data.terms.strategy.id].name} />
-                      </DetailList>
-                    </CardContent>
-                    <CardFooter className="justify-end text-sm font-medium text-primary">
-                      {needsAction(d) ? "Answer now" : "View deposit"}
-                      <ChevronRightIcon className="size-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
-                    </CardFooter>
-                  </Card>
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <p className="text-xs text-muted-foreground">Yield figures are estimates. The yield is variable and can be lower, or zero.</p>
-        </>
+          <section aria-labelledby="deposits-title" className="space-y-4">
+            <div className="flex items-baseline gap-2">
+              <h2 id="deposits-title" className="text-xl font-semibold tracking-tight">
+                Your deposits
+              </h2>
+              <span className="text-sm text-muted-foreground">{deposits.length}</span>
+            </div>
+            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {deposits.map((d) => (
+                <li key={d.id.toString()}>
+                  <Link
+                    href={`/landlord/deposits/${d.id}`}
+                    aria-label={`Deposit #${d.id}, ${money(d.data.terms.amount)}, ${STATUS_LABEL[d.status]}`}
+                    className="group block h-full rounded-xl focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  >
+                    <Card className="h-full transition-colors group-hover:border-primary/40 group-hover:bg-accent/40">
+                      <CardHeader>
+                        <div className="flex items-start justify-between gap-2">
+                          <CardDescription>Deposit #{d.id.toString()}</CardDescription>
+                          <StatusBadge status={d.status} />
+                        </div>
+                        <CardTitle className="text-2xl tabular-nums">{money(d.data.terms.amount)}</CardTitle>
+                      </CardHeader>
+                      <CardContent className="flex-1">
+                        <DetailList>
+                          <DetailRow label="Contract end" value={daysFromNow(d.data.terms.end_ts)} />
+                          <DetailRow label="Yield so far" value={yieldText(d)} />
+                          {live(d) && <DetailRow label="Tenant can claim" value={daysFromNow(d.timeout_at)} />}
+                          <DetailRow label="Kept in" value={STRATEGY_COPY[d.data.terms.strategy.id].name} />
+                        </DetailList>
+                      </CardContent>
+                      <CardFooter className="justify-end text-sm font-medium text-primary">
+                        {needsAction(d) ? "Answer now" : "View deposit"}
+                        <ChevronRightIcon className="size-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                      </CardFooter>
+                    </Card>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground">Yield figures are estimates. The yield is variable and can be lower, or zero.</p>
+          </section>
+        </div>
       )}
     </>
   );
