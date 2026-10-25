@@ -14,7 +14,7 @@
 ## Mapeo (src/fianza.ts)
 - Roles v1, uno por rol: `approver` = `serviceProvider` = casero; `releaseSigner` = `receiver` = inquilino; `platformAddress` = tesorería (cobra `platformFee` **y puede actualizar el escrow**: es una cuenta de la plataforma); `disputeResolver` = staff.
 - "Aprobar devolución" = dos pasos: el casero aprueba el hito (`approve-milestone`, índice `"0"`) y el inquilino libera (`release-funds`). Al liberar se paga capital + rendimiento menos comisiones.
-- Parar = `dispute-escrow` del casero. Resolver = `resolve-dispute` repartiendo `min(importe fondeado, saldo actual)`: con rendimiento, el importe fondeado; si el vault perdió valor, el saldo (repartir más haría fallar la resolución y bloquearía los fondos). Deducción al casero, recortada a lo que hay; el resto al inquilino, que asume el déficit como en el plan B. El rendimiento que sobra se reparte con `withdraw-remaining-funds` (`buildWithdrawYieldBody`): primero la comisión opcional de plataforma (`platformFeeBps`, 0 por defecto) y después la jurisdicción (`tenantYieldBps`).
+- Parar = `dispute-escrow` del casero. Resolver = `resolve-dispute` con la deducción para el casero y el resto para el inquilino (con pérdida en el vault, solo lo que queda: #69). El rendimiento que sobra se reparte con `withdraw-remaining-funds` (`buildWithdrawYieldBody`): primero la comisión opcional de plataforma (`platformFeeBps`, 0 por defecto) y después la jurisdicción (`tenantYieldBps`).
 - `signer` del deploy: por defecto la tesorería (cuenta G de la plataforma), porque las partes pueden ser passkeys.
 
 ## Rendimiento y comisiones (src/defindex.ts)

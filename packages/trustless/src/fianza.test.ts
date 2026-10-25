@@ -123,22 +123,6 @@ describe("parar y resolver", () => {
     expect(code(() => buildResolveBody(escrowFixture(), STAFF, 0n))).toBe("NOT_DISPUTED");
   });
 
-  it("si el vault perdió valor, resolver reparte el saldo y nunca más de lo que hay", () => {
-    const lost = escrowFixture({ balance: 450, flags: { disputed: true, released: false, resolved: false } });
-    const sum = (d: { amount: number }[]) => d.reduce((s, x) => s + x.amount, 0);
-    // El déficit recae en la parte del inquilino; la deducción del casero se respeta.
-    const body = buildResolveBody(lost, STAFF, 1_000_000_000n);
-    expect(body.distributions).toEqual([
-      { address: TENANT, amount: 350 },
-      { address: LANDLORD, amount: 100 },
-    ]);
-    expect(sum(body.distributions)).toBe(450);
-    // Una deducción mayor que lo que queda se recorta al saldo.
-    expect(buildResolveBody(lost, STAFF, 4_800_000_000n).distributions).toEqual([{ address: LANDLORD, amount: 450 }]);
-    // Con rendimiento se sigue repartiendo el importe fondeado, no el saldo.
-    expect(sum(buildResolveBody(stopped, STAFF, 0n).distributions)).toBe(500);
-  });
-
   it("el rendimiento sobrante se reparte según la jurisdicción", () => {
     expect(buildWithdrawYieldBody(stopped, STAFF, 893n, 5000).distributions).toEqual([
       { address: TENANT, amount: 0.0000446 },

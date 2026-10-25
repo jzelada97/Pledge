@@ -157,12 +157,9 @@ function distributions(parts: [string, bigint][]): Distribution[] {
 }
 
 /**
- * "Resolver": se reparte `min(importe fondeado, saldo actual)`.
- * - Con rendimiento, el importe fondeado (lo recomienda TW, porque el saldo crece mientras se construye
- *   la transacción); el rendimiento queda en el escrow y se reparte con `buildWithdrawYieldBody`.
- * - Si el vault ha perdido valor, el saldo: repartir más de lo que hay haría fallar la resolución y
- *   dejaría los fondos bloqueados. La deducción se recorta a lo que hay y el déficit recae en la parte
- *   del inquilino, como en el `split` del plan B (Q-13).
+ * "Resolver": se reparte el importe **fondeado** (lo recomienda TW, porque el saldo crece mientras se
+ * construye la transacción). La deducción va al casero y el resto al inquilino. El rendimiento queda
+ * en el escrow y se reparte con `buildWithdrawYieldBody`.
  */
 export function buildResolveBody(escrow: Escrow, resolver: string, deduction: bigint): DistributionsBody {
   if (resolver !== escrow.roles.disputeResolver) throw new FianzaError("NOT_RESOLVER", "Solo el staff puede resolver");
@@ -171,15 +168,12 @@ export function buildResolveBody(escrow: Escrow, resolver: string, deduction: bi
   if (deduction < 0n || deduction > funded) {
     throw new FianzaError("INVALID_AMOUNT", "La deducción debe estar entre 0 y la fianza");
   }
-  const balance = fromDecimal(escrow.balance);
-  const base = balance < funded ? balance : funded;
-  const toLandlord = deduction < base ? deduction : base;
   return {
     contractId: escrow.contractId,
     disputeResolver: resolver,
     distributions: distributions([
-      [escrow.roles.receiver, base - toLandlord],
-      [escrow.roles.serviceProvider, toLandlord],
+      [escrow.roles.receiver, funded - deduction],
+      [escrow.roles.serviceProvider, deduction],
     ]),
   };
 }
