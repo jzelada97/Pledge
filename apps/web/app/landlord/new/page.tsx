@@ -9,12 +9,12 @@ import { z } from "zod";
 import { DetailList, DetailRow } from "@/components/detail-list";
 import { DevNote } from "@/components/dev-note";
 import { InviteLink } from "@/components/invite-link";
-import { PageHeader } from "@/components/page-header";
+import { Group } from "@/components/grouped";
+import { PaneBody, PaneToolbar } from "@/components/pane";
 import { StrategyPicker } from "@/components/strategy-picker";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { CONFIG } from "@/lib/fixtures";
@@ -66,44 +66,39 @@ export default function NewDeposit() {
   if (inviteUrl) {
     return (
       <>
-        <PageHeader title="Deposit created" back={{ href: "/landlord", label: "Deposits" }} />
-        <Card className="max-w-2xl">
-          <CardHeader>
-            <CircleCheckIcon className="size-6 text-success" aria-hidden />
-            <CardTitle className="text-xl">Send this link to your tenant</CardTitle>
-            <CardDescription>
+        <PaneToolbar title="Deposit created" back={{ href: "/landlord", label: "Deposits" }} />
+        <PaneBody className="max-w-xl">
+          <header className="space-y-3 text-center">
+            <CircleCheckIcon className="mx-auto size-12 text-success" aria-hidden />
+            <h2 className="text-3xl font-semibold tracking-tight">Send this link to your tenant</h2>
+            <p className="text-muted-foreground">
               They pay the {money(units)} deposit through it from their bank, whether or not they already have an account.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <InviteLink url={inviteUrl} />
-          </CardContent>
-          <CardFooter className="justify-end">
-            <Button asChild>
-              <Link href="/landlord">Back to deposits</Link>
-            </Button>
-          </CardFooter>
-        </Card>
+            </p>
+          </header>
+          <Group>
+            <div className="py-4">
+              <InviteLink url={inviteUrl} />
+            </div>
+          </Group>
+          <Button asChild size="lg" className="self-center">
+            <Link href="/landlord">Back to deposits</Link>
+          </Button>
+        </PaneBody>
       </>
     );
   }
 
   return (
     <>
-      <PageHeader
-        title="New deposit"
-        lead="Set the amount and where it's kept. You'll get an invitation link for your tenant."
-        back={{ href: "/landlord", label: "Deposits" }}
-      />
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(run)} noValidate className="grid gap-6 lg:grid-cols-3">
-          <div className="flex flex-col gap-6 lg:col-span-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Amount and length</CardTitle>
-                <CardDescription>The deposit goes back to the tenant in full when you both approve.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-4 sm:grid-cols-2">
+      <PaneToolbar title="New deposit" back={{ href: "/landlord", label: "Deposits" }} />
+      <PaneBody className="max-w-2xl">
+        <header>
+          <p className="text-lg text-muted-foreground">Set the amount and where it&apos;s kept. You&apos;ll get an invitation link for your tenant.</p>
+        </header>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(run)} noValidate className="flex flex-col gap-8">
+            <Group title="Amount and length" footer="The deposit goes back to the tenant in full when you both approve.">
+              <div className="grid gap-4 py-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
                   name="amount"
@@ -130,76 +125,58 @@ export default function NewDeposit() {
                     </FormItem>
                   )}
                 />
-              </CardContent>
-            </Card>
+              </div>
+            </Group>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Where the deposit is kept</CardTitle>
-                <CardDescription>The yield is always variable. No option is free of risk.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <FormField
-                  control={form.control}
-                  name="strategyId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="sr-only">Strategy</FormLabel>
-                      <FormControl>
-                        <StrategyPicker value={field.value} onChange={field.onChange} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <DevNote>Strategies and risk tiers come from factory.strategies(). APY is read live and never stored.</DevNote>
-              </CardContent>
-            </Card>
+            <section className="space-y-2">
+              <h3 className="px-4 text-sm font-medium text-muted-foreground">Where the deposit is kept</h3>
+              <FormField
+                control={form.control}
+                name="strategyId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="sr-only">Strategy</FormLabel>
+                    <FormControl>
+                      <StrategyPicker value={field.value} onChange={field.onChange} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <p className="px-4 text-sm text-muted-foreground">The yield is always variable. No option is free of risk.</p>
+              <DevNote>Strategies and risk tiers come from factory.strategies(). APY is read live and never stored.</DevNote>
+            </section>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Tenant</CardTitle>
-                <CardDescription>
-                  You&apos;ll get an invitation link. Your tenant pays through it, whether or not they already have an account.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <DevNote>Always invite_hash, never a known tenant address. The code is generated in this browser and only travels in the link (#c=…).</DevNote>
-              </CardContent>
-            </Card>
-          </div>
+            <Group title="Summary" footer="Example figures. The real yield can be lower, or zero.">
+              <DetailList>
+                <DetailRow label="Deposit" value={money(units)} strong />
+                <DetailRow label="Kept in" value={copy.name} />
+                <DetailRow label={`Example yield, ${months || 0} months`} value={money(exampleYield)} />
+                <DetailRow indent label={`Platform fee (${percent(CONFIG.platform_fee_bps)})`} value={money(b.platformFee)} />
+                {CONFIG.tenant_yield_bps > 0 && <DetailRow indent label="Tenant's share" value={money(b.tenantYield)} />}
+                <DetailRow indent label="Your share" value={money(b.landlordYield)} />
+                <DetailRow label="To stop the release you'd pay" value={money(bond)} />
+              </DetailList>
+            </Group>
 
-          <aside className="lg:sticky lg:top-6 lg:self-start">
-            <Card>
-              <CardHeader>
-                <CardTitle>Summary</CardTitle>
-                <CardDescription>Example figures. The real yield can be lower, or zero.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <DetailList>
-                  <DetailRow label="Deposit" value={money(units)} strong />
-                  <DetailRow label="Kept in" value={copy.name} />
-                  <DetailRow label={`Example yield, ${months || 0} months`} value={money(exampleYield)} />
-                  <DetailRow indent label={`Platform fee (${percent(CONFIG.platform_fee_bps)})`} value={money(b.platformFee)} />
-                  {CONFIG.tenant_yield_bps > 0 && <DetailRow indent label="Tenant's share" value={money(b.tenantYield)} />}
-                  <DetailRow indent label="Your share" value={money(b.landlordYield)} />
-                  <DetailRow label="To stop the release you'd pay" value={money(bond)} />
-                </DetailList>
-                <Alert>
-                  <AlertTitle>Yield goes to: {yieldGoesTo(CONFIG.tenant_yield_bps, "landlord")}</AlertTitle>
-                  <AlertDescription>{YIELD_POLICY_NOTE}</AlertDescription>
-                </Alert>
-              </CardContent>
-              <CardFooter className="justify-end">
-                <Button type="submit" disabled={busy} aria-busy={busy}>
-                  {busy && <Spinner data-icon="inline-start" aria-hidden />}
-                  {busy ? PHASE_TEXT[phase as "signing" | "sending"] : "Create and get the link"}
-                </Button>
-              </CardFooter>
-            </Card>
-          </aside>
-        </form>
-      </Form>
+            <Alert>
+              <AlertTitle>Yield goes to: {yieldGoesTo(CONFIG.tenant_yield_bps, "landlord")}</AlertTitle>
+              <AlertDescription>{YIELD_POLICY_NOTE}</AlertDescription>
+            </Alert>
+
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                You&apos;ll get an invitation link. Your tenant pays through it, whether or not they already have an account.
+              </p>
+              <DevNote>Always invite_hash, never a known tenant address. The code is generated in this browser and only travels in the link (#c=…).</DevNote>
+              <Button type="submit" size="lg" disabled={busy} aria-busy={busy} className="w-full">
+                {busy && <Spinner data-icon="inline-start" aria-hidden />}
+                {busy ? PHASE_TEXT[phase as "signing" | "sending"] : "Create and get the link"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </PaneBody>
     </>
   );
 }

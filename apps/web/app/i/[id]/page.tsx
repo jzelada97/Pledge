@@ -4,7 +4,7 @@ import { DetailList, DetailRow } from "@/components/detail-list";
 import { InvitationFlow } from "@/components/invitation-flow";
 import { TenantShell } from "@/components/tenant-shell";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Group } from "@/components/grouped";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { depositById } from "@/lib/fixtures";
 import { date, money, percent } from "@/lib/format";
@@ -22,7 +22,7 @@ export default async function Invitation({ params, searchParams }: PageProps<"/i
   if (d.status !== "Proposed") {
     return (
       <TenantShell>
-        <Empty className="border bg-card">
+        <Empty className="rounded-2xl bg-card ring-1 ring-foreground/8">
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <LinkIcon aria-hidden />
@@ -41,50 +41,42 @@ export default async function Invitation({ params, searchParams }: PageProps<"/i
 
   return (
     <TenantShell>
-      <header className="space-y-2">
-        <h1 className="text-3xl font-semibold tracking-tight">Your room deposit</h1>
-        <p className="text-lg text-muted-foreground">
-          {money(terms.amount)}, back to you in full when you and your landlord approve.
-        </p>
-      </header>
+      <InvitationFlow
+        amount={money(terms.amount)}
+        termsMatch={check !== "fail"}
+        simulatedRamp
+        review={
+          <>
+            <header className="space-y-2 pt-2 text-center">
+              <p className="text-sm font-medium text-muted-foreground">Your room deposit</p>
+              <h1 className="text-5xl font-semibold tracking-tight tabular-nums">{money(terms.amount)}</h1>
+              <p className="text-muted-foreground">Back to you in full when you and your landlord approve.</p>
+            </header>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>What you&apos;re agreeing to</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DetailList>
-            <DetailRow label="Deposit" value={money(terms.amount)} strong />
-            <DetailRow label="Contract ends" value={date(terms.end_ts)} />
-            <DetailRow label="If your landlord doesn't respond" value={`Claim it from ${date(d.timeout_at)}`} />
-            <DetailRow label="The yield goes to" value={yieldGoesTo(terms.tenant_yield_bps, "tenant")} />
-            <DetailRow label="Platform fee (on the yield only)" value={percent(terms.platform_fee_bps)} />
-            <DetailRow label="Your landlord pays to stop the release" value={money(terms.stop_bond)} />
-            <DetailRow label="If stopped, decided by" value={`Fianzas staff, within ${reviewDays} days`} />
-          </DetailList>
-        </CardContent>
-      </Card>
+            <Group title="What you're agreeing to">
+              <DetailList>
+                <DetailRow label="Deposit" value={money(terms.amount)} strong />
+                <DetailRow label="Contract ends" value={date(terms.end_ts)} />
+                <DetailRow label="If your landlord doesn't respond" value={`Claim it from ${date(d.timeout_at)}`} />
+                <DetailRow label="The yield goes to" value={yieldGoesTo(terms.tenant_yield_bps, "tenant")} />
+                <DetailRow label="Platform fee (on the yield only)" value={percent(terms.platform_fee_bps)} />
+                <DetailRow label="Your landlord pays to stop the release" value={money(terms.stop_bond)} />
+                <DetailRow label="If stopped, decided by" value={`Fianzas staff, within ${reviewDays} days`} />
+              </DetailList>
+            </Group>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Where your deposit is kept</CardTitle>
-          <CardDescription>{copy.name}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">{RISK_LABEL[terms.strategy.risk]}</Badge>
-            {terms.strategy.simulated && <Badge className="bg-warning/10 text-warning">Simulated yield</Badge>}
-          </div>
-          <p className="text-sm text-muted-foreground">{copy.risks}</p>
-        </CardContent>
-      </Card>
-
-      <section aria-labelledby="pay-title" className="space-y-4">
-        <h2 id="pay-title" className="text-xl font-semibold tracking-tight">
-          Pay your deposit
-        </h2>
-        <InvitationFlow amount={money(terms.amount)} termsMatch={check !== "fail"} simulatedRamp />
-      </section>
+            <Group title="Where your deposit is kept" footer={copy.risks}>
+              <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 py-3 text-sm">
+                <span className="font-medium">{copy.name}</span>
+                <span className="flex flex-wrap gap-2">
+                  <Badge variant="outline">{RISK_LABEL[terms.strategy.risk]}</Badge>
+                  {terms.strategy.simulated && <Badge className="bg-warning/10 text-warning">Simulated yield</Badge>}
+                </span>
+              </div>
+            </Group>
+          </>
+        }
+      />
     </TenantShell>
   );
 }

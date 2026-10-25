@@ -15,6 +15,27 @@ const TONE: Record<Status, { icon: LucideIcon; className: string }> = {
   Cancelled: { icon: XCircleIcon, className: "bg-muted text-muted-foreground" },
 };
 
+const TEXT: Record<Status, string> = {
+  Proposed: "text-muted-foreground",
+  Active: "text-success",
+  Ending: "text-warning",
+  Stopped: "text-destructive",
+  UnderReview: "text-warning",
+  Settled: "text-muted-foreground",
+  Cancelled: "text-muted-foreground",
+};
+
+// Icon + label without a pill, for list rows. `inverted` is for rows drawn on the primary selection colour.
+export function StatusLine({ status, inverted }: { status: Status; inverted?: boolean }) {
+  const { icon: Icon } = TONE[status];
+  return (
+    <span className={cn("inline-flex items-center gap-1 text-sm font-medium", inverted ? "text-primary-foreground" : TEXT[status])}>
+      <Icon className="size-3.5" aria-hidden />
+      {STATUS_LABEL[status]}
+    </span>
+  );
+}
+
 export function StatusBadge({ status }: { status: Status }) {
   const { icon: Icon, className } = TONE[status];
   return (

@@ -1,11 +1,13 @@
-import { LandlordNav } from "@/components/landlord-nav";
-import { SiteHeader } from "@/components/site-header";
+import { LandlordShell } from "@/components/landlord-shell";
+import { landlordList } from "@/lib/landlord-list";
+
+export const dynamic = "force-dynamic"; // "in N days" must be computed per request, not at build time
 
 export default function LandlordLayout({ children }: { children: React.ReactNode }) {
+  const { items, filters, summary } = landlordList();
   return (
-    <>
-      <SiteHeader nav={<LandlordNav />} />
-      <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">{children}</main>
-    </>
+    <LandlordShell items={items} filters={filters} summary={summary}>
+      {children}
+    </LandlordShell>
   );
 }

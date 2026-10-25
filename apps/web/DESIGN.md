@@ -48,6 +48,20 @@ Glass layer:
 - Labels: Geist Mono 11–14px, tracking 0.04em. Good for amounts, dates and codes.
 - Sentence case everywhere. No all-caps labels.
 
+## App layouts (Apple-inspired)
+
+- **Landlord, desktop (lg+):** a macOS split view (`components/landlord-shell.tsx`): sidebar with filters and
+  totals · deposit list (selected row in primary) · detail pane. Each column scrolls on its own. The pane has
+  a frosted toolbar (`PaneToolbar`) with the title and the actions on the right.
+- **Landlord, phone:** an iOS navigation stack. `/landlord` shows the list with a large title and filter pills;
+  every other route shows the pane with a back button and the actions in a bottom bar (`BottomBar`).
+- **Tenant:** an iOS app. Deposits are Wallet-style passes (`DepositPass`); tapping one opens
+  `/tenant/deposits/[id]` with the details as a grouped list and the action pinned to the bottom.
+- **Invitation:** iOS onboarding. Terms first, then one full screen per step with a progress bar and the
+  action at the bottom; focus moves to each new screen's title.
+- **Content:** grouped inset sections (`components/grouped.tsx`): a small heading, a white rounded panel with
+  hairline rows of at least 44px, and an optional footnote.
+
 ## Layout and shape
 
 - 4px base grid. Columns 12 / 8 / 4; margins 64px / 32px / 20px (desktop / tablet / mobile).
