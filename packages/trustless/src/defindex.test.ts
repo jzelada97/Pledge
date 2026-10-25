@@ -1,45 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { accruedYield, withDefindex } from "./defindex";
-import { buildDeployBody } from "./fianza";
-import { escrowFixture, parties, USDC, VAULT } from "./test-utils";
+import { accruedYield, expectedPayout, TW_VAULT_TESTNET } from "./defindex";
 
-const base = () =>
-  buildDeployBody({ fianzaId: 1, parties, amount: 5_000_000_000n, asset: { contractId: USDC } });
-
-describe("withDefindex (supuesto)", () => {
-  it("MVP Portugal: 20 % a la plataforma y el resto del rendimiento al casero", () => {
-    const body = withDefindex(base(), { vault: VAULT, platformYieldFeeBps: 2_000, tenantYieldBps: 0 });
-    expect(body.defindex).toEqual({
-      vaultContractId: VAULT,
-      yieldDistribution: { platformBps: 2_000, receiverBps: 0, serviceProviderBps: 8_000 },
-    });
+describe("rendimiento en el vault", () => {
+  it("rendimiento = valor en el vault − lo fondeado, nunca negativo", () => {
+    const funded = 20_000_000_0n; // 20 USDC
+    expect(accruedYield({ vault: TW_VAULT_TESTNET, shares: 19.9996115, underlying: 20.0000023 }, funded)).toBe(23n);
+    // Justo después de fondear, el redondeo del vault deja 1 stroop por debajo.
+    expect(accruedYield({ vault: TW_VAULT_TESTNET, shares: 9.999728, underlying: 9.9999999 }, 100_000_000n)).toBe(0n);
   });
 
-  it("el reparto suma siempre 10000 bps", () => {
-    for (const fee of [0, 1_500, 2_000, 10_000]) {
-      for (const tenant of [0, 3_333, 5_000, 10_000]) {
-        const d = withDefindex(base(), { vault: VAULT, platformYieldFeeBps: fee, tenantYieldBps: tenant })
-          .defindex.yieldDistribution;
-        expect(d.platformBps + d.receiverBps + d.serviceProviderBps).toBe(10_000);
-      }
-    }
-  });
-
-  it("rechaza bps fuera de rango y vaults mal formados", () => {
-    expect(() => withDefindex(base(), { vault: VAULT, platformYieldFeeBps: 10_001, tenantYieldBps: 0 })).toThrow();
-    expect(() => withDefindex(base(), { vault: VAULT, platformYieldFeeBps: 0, tenantYieldBps: -1 })).toThrow();
-    expect(() => withDefindex(base(), { vault: "GNOTACONTRACT", platformYieldFeeBps: 0, tenantYieldBps: 0 })).toThrow();
-  });
-});
-
-describe("accruedYield (supuesto)", () => {
-  it("es null mientras TW no lo devuelva", () => {
-    expect(accruedYield(escrowFixture())).toBeNull();
-  });
-
-  it("lee el rendimiento acumulado en unidad mínima", () => {
-    const escrow = { ...escrowFixture(), defindex: { vaultContractId: VAULT, accruedYield: 12.5 } };
-    expect(accruedYield(escrow)).toBe(125_000_000n);
+  it("el cobro esperado descuenta el 0,3 % de TW y el platformFee sobre todo lo retirado", () => {
+    // Ejemplo de la guía de TW: 500,0000893 con un 1 % → 493,5000883.
+    expect(expectedPayout(5_000_000_893n, 1)).toBe(4_935_000_883n);
+    // Ciclo real en testnet (#62): 10,0000008 sin platformFee → 9,9700008.
+    expect(expectedPayout(100_000_008n, 0)).toBe(99_700_008n);
+    expect(() => expectedPayout(1n, 100)).toThrow(RangeError);
   });
 });

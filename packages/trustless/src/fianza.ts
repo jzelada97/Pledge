@@ -1,34 +1,37 @@
-// Una fianza como escrow Single-Release v2 de Trustless Work. Este módulo traduce nuestro
-// dominio (casero, inquilino, staff, aprobar devolución, parar, resolver) a los cuerpos de su API.
-import { withDefindex, type DefindexStrategy, type DeployWithDefindex } from "./defindex";
+// Una fianza como escrow single-release con rendimiento de Trustless Work (API v1 + vault). Este
+// módulo traduce nuestro dominio (casero, inquilino, staff, aprobar devolución, parar, resolver) a los
+// cuerpos de su API.
+//
+// Roles v1 (una dirección por rol, sin quórum): el casero es `approver` y `serviceProvider`; el
+// inquilino, `releaseSigner` y `receiver`. "Aprobar la devolución" son dos pasos: el casero aprueba el
+// hito y el inquilino libera. La API no admite una C-address (passkey) como firmante (issue #61): esas
+// acciones se construyen contra el contrato y van por el Relayer (packages/wallet, plan A).
 import type {
-  ApproveAndReleaseBody,
-  ApproveMilestonesBody,
-  DeployV2Body,
+  ApproveMilestoneBody,
+  DeployBody,
   DisputeBody,
-  ResolveDisputeBody,
-  SingleReleaseV2Escrow,
-  TrustlineRef,
+  Distribution,
+  DistributionsBody,
+  Escrow,
+  ReleaseFundsBody,
 } from "./types";
 import { fromDecimal, toDecimal } from "./units";
 
-/** El único hito: la devolución, con las dos aprobaciones (casero e inquilino). */
-export const RELEASE_MILESTONE = 0;
-export const APPROVALS_TARGET = 2;
-const MAX_ROLE = 5;
-const MAX_REASON = 500;
+/** El único hito: la devolución de la fianza. */
+export const RELEASE_MILESTONE = "0";
+const BPS = 10_000n;
 
 export type FianzaErrorCode =
   | "INVALID_PARTIES"
   | "NOT_PARTY"
   | "NOT_RESOLVER"
   | "NOT_FUNDED"
+  | "NOT_APPROVED"
   | "ALREADY_APPROVED"
   | "ALREADY_SETTLED"
   | "DISPUTED"
   | "NOT_DISPUTED"
-  | "INVALID_AMOUNT"
-  | "INVALID_REASON";
+  | "INVALID_AMOUNT";
 
 export class FianzaError extends Error {
   constructor(
@@ -43,12 +46,10 @@ export class FianzaError extends Error {
 export interface FianzaParties {
   landlord: string;
   tenant: string;
-  /** Recibe la comisión de la plataforma. */
+  /** Recibe la comisión de la plataforma y es quien puede actualizar el escrow: cuenta de la plataforma. */
   treasury: string;
-  /** Resolvers de disputas (1–5). */
-  staff: string[];
-  /** Cuenta de la plataforma que administra el escrow; distinta de todas las demás. */
-  admin: string;
+  /** Resolver de disputas (v1: una sola cuenta). */
+  staff: string;
 }
 
 export interface FianzaDeployInput {
@@ -56,141 +57,155 @@ export interface FianzaDeployInput {
   parties: FianzaParties;
   /** Importe en unidad mínima (7 decimales). */
   amount: bigint;
-  asset: TrustlineRef;
+  /** Emisor del USDC (testnet: el de Blend, `GATALTGT…5V56`). */
+  assetIssuer: string;
   title?: string;
   description?: string;
-  /** Quién firma el despliegue. Por defecto, el inquilino al aceptar la invitación. */
+  /** Cuenta G que firma y paga el despliegue. Por defecto, la tesorería (las partes pueden ser passkeys). */
   signer?: string;
-  /** Rendimiento en DeFindex (ver defindex.ts). */
-  defindex?: DefindexStrategy;
+  /** Vault de DeFindex; sin él, la API usa el de Trustless Work. */
+  vault?: string;
 }
 
 export type FianzaStatus = "Proposed" | "Active" | "Stopped" | "Settled";
 
-/** Comprueba las reglas de roles de TW v2 antes de llamar a la API (fallar pronto y claro). */
+/** Reglas de roles antes de llamar a la API (fallar pronto y claro). */
 export function validateParties(p: FianzaParties): void {
   const fail = (msg: string) => {
     throw new FianzaError("INVALID_PARTIES", msg);
   };
   if (p.landlord === p.tenant) fail("Casero e inquilino no pueden ser la misma cuenta");
-  if (p.staff.length === 0 || p.staff.length > MAX_ROLE) fail("El staff debe tener de 1 a 5 cuentas");
-  if (new Set(p.staff).size !== p.staff.length) fail("El staff tiene cuentas repetidas");
-  // Un resolver no puede tener un rol que abra disputas (approver, provider, signer, platform, receiver).
-  const disputers = new Set([p.landlord, p.tenant, p.treasury]);
-  if (p.staff.some((s) => disputers.has(s))) fail("El staff no puede ser casero, inquilino ni tesorería");
-  const others = new Set([p.landlord, p.tenant, p.treasury, ...p.staff]);
-  if (others.has(p.admin)) fail("El admin debe ser distinto de todos los demás roles");
+  // El resolver no puede tener otro rol: decidiría sobre su propio dinero.
+  if ([p.landlord, p.tenant, p.treasury].includes(p.staff)) fail("El staff no puede ser casero, inquilino ni tesorería");
+  if ([p.landlord, p.tenant].includes(p.treasury)) fail("La tesorería no puede ser casero ni inquilino");
 }
 
 export function engagementId(fianzaId: string | number): string {
   return `fianza-${fianzaId}`;
 }
 
-/** Cuerpo de `POST /escrow/single-release/v2/deploy` para una fianza. */
-export function buildDeployBody(input: FianzaDeployInput): DeployV2Body | DeployWithDefindex {
+/** Cuerpo de `POST /deployer/single-release` para una fianza. */
+export function buildDeployBody(input: FianzaDeployInput): DeployBody {
   const p = input.parties;
   validateParties(p);
   if (input.amount <= 0n) throw new FianzaError("INVALID_AMOUNT", "La fianza debe ser mayor que 0");
-  const body: DeployV2Body = {
-    signer: input.signer ?? p.tenant,
+  const body: DeployBody = {
+    signer: input.signer ?? p.treasury,
     engagementId: engagementId(input.fianzaId),
     title: input.title ?? `Fianza ${input.fianzaId}`,
     description: input.description ?? "Fianza de habitación",
     roles: {
-      approvers: [p.landlord, p.tenant],
-      serviceProviders: [p.landlord],
-      platform: p.treasury,
-      releaseSigners: [p.landlord, p.tenant],
-      disputeResolvers: [...p.staff],
+      approver: p.landlord,
+      serviceProvider: p.landlord,
+      platformAddress: p.treasury,
+      releaseSigner: p.tenant,
+      disputeResolver: p.staff,
       receiver: p.tenant,
-      admin: p.admin,
-      observers: [],
     },
     amount: toDecimal(input.amount),
-    // TW cobra platformFee sobre el total; nuestra comisión es solo sobre el rendimiento.
+    // platformFee se cobra sobre todo lo retirado (capital incluido): de momento 0.
     platformFee: 0,
-    milestones: [{ description: "Devolución de la fianza", approvalsTarget: APPROVALS_TARGET }],
-    trustline: input.asset,
+    milestones: [{ description: "Devolución de la fianza" }],
+    trustline: { symbol: "USDC", address: input.assetIssuer },
   };
-  return input.defindex ? withDefindex(body, input.defindex) : body;
+  if (input.vault) body.vault = input.vault;
+  return body;
 }
 
-export function fianzaStatus(escrow: SingleReleaseV2Escrow): FianzaStatus {
-  if (escrow.released || escrow.dispute.resolved) return "Settled";
-  if (escrow.dispute.isDisputed) return "Stopped";
+export function fianzaStatus(escrow: Escrow): FianzaStatus {
+  if (escrow.flags.released || escrow.flags.resolved) return "Settled";
+  if (escrow.flags.disputed) return "Stopped";
+  // Con vault el saldo puede quedar 1 stroop por debajo del importe justo después de fondear.
   return escrow.balance > 0 ? "Active" : "Proposed";
 }
 
 export type ApproveAction =
-  | { kind: "approve"; body: ApproveMilestonesBody }
-  | { kind: "approve-and-release"; body: ApproveAndReleaseBody };
+  | { kind: "approve"; body: ApproveMilestoneBody }
+  | { kind: "release"; body: ReleaseFundsBody };
 
 /**
- * "Aprobar devolución": si la otra parte ya aprobó, esta aprobación completa el quórum y
- * libera en la misma transacción (`approve-and-release-milestones`); si no, solo aprueba.
+ * "Aprobar devolución". El casero aprueba el hito (`approve-milestone`); después el inquilino libera
+ * (`release-funds`), que paga capital + rendimiento menos comisiones.
  */
-export function planApproveRelease(escrow: SingleReleaseV2Escrow, who: string): ApproveAction {
-  if (!escrow.roles.approvers.includes(who)) {
-    throw new FianzaError("NOT_PARTY", "Solo el casero o el inquilino pueden aprobar");
-  }
+export function planApproveRelease(escrow: Escrow, who: string): ApproveAction {
   const status = fianzaStatus(escrow);
   if (status === "Settled") throw new FianzaError("ALREADY_SETTLED", "La fianza ya está liquidada");
   if (status === "Stopped") throw new FianzaError("DISPUTED", "La fianza está parada");
   if (status === "Proposed") throw new FianzaError("NOT_FUNDED", "La fianza aún no está depositada");
 
-  const approvals = escrow.milestones[RELEASE_MILESTONE].approvals;
-  if (approvals.approvedBy.includes(who)) {
-    throw new FianzaError("ALREADY_APPROVED", "Esta parte ya aprobó la devolución");
+  const approved = escrow.milestones[Number(RELEASE_MILESTONE)]?.approved ?? false;
+  if (who === escrow.roles.approver) {
+    if (approved) throw new FianzaError("ALREADY_APPROVED", "El casero ya aprobó la devolución");
+    return { kind: "approve", body: { contractId: escrow.contractId, milestoneIndex: RELEASE_MILESTONE, approver: who } };
   }
-  const milestoneIndexes = [RELEASE_MILESTONE];
-  if (approvals.approvalCount + 1 >= approvals.target) {
-    return {
-      kind: "approve-and-release",
-      body: { contractId: escrow.contractId, signer: who, milestoneIndexes },
-    };
+  if (who === escrow.roles.releaseSigner) {
+    if (!approved) throw new FianzaError("NOT_APPROVED", "El casero aún no ha aprobado la devolución");
+    return { kind: "release", body: { contractId: escrow.contractId, releaseSigner: who } };
   }
-  return { kind: "approve", body: { contractId: escrow.contractId, approver: who, milestoneIndexes } };
+  throw new FianzaError("NOT_PARTY", "Solo el casero o el inquilino pueden aprobar la devolución");
 }
 
-/** "Parar": el casero abre la disputa. `reason` debería ser un hash, no el motivo en claro (DAT-2). */
-export function buildStopBody(escrow: SingleReleaseV2Escrow, landlord: string, reason: string): DisputeBody {
-  if (!escrow.roles.serviceProviders.includes(landlord)) {
-    throw new FianzaError("NOT_PARTY", "Solo el casero puede parar la fianza");
-  }
-  if (fianzaStatus(escrow) !== "Active") {
-    throw new FianzaError("NOT_FUNDED", "Solo se puede parar una fianza activa");
-  }
-  if (reason.length === 0 || reason.length > MAX_REASON) {
-    throw new FianzaError("INVALID_REASON", "El motivo debe tener de 1 a 500 caracteres");
-  }
-  return { contractId: escrow.contractId, signer: landlord, reason };
+/** "Parar": el casero abre la disputa (v1 no guarda motivo on-chain). */
+export function buildStopBody(escrow: Escrow, landlord: string): DisputeBody {
+  if (landlord !== escrow.roles.serviceProvider) throw new FianzaError("NOT_PARTY", "Solo el casero puede parar la fianza");
+  if (fianzaStatus(escrow) !== "Active") throw new FianzaError("NOT_FUNDED", "Solo se puede parar una fianza activa");
+  return { contractId: escrow.contractId, signer: landlord };
+}
+
+function distributions(parts: [string, bigint][]): Distribution[] {
+  return parts.filter(([, amount]) => amount > 0n).map(([address, amount]) => ({ address, amount: toDecimal(amount) }));
 }
 
 /**
- * "Resolver": la deducción (en unidad mínima) va al casero y el resto del saldo al inquilino.
- * Las distribuciones suman exactamente el saldo, como exige el contrato de TW.
+ * "Resolver": se reparte el importe **fondeado** (lo recomienda TW, porque el saldo crece mientras se
+ * construye la transacción). La deducción va al casero y el resto al inquilino. El rendimiento queda
+ * en el escrow y se reparte con `buildWithdrawYieldBody`.
  */
-export function buildResolveBody(
-  escrow: SingleReleaseV2Escrow,
+export function buildResolveBody(escrow: Escrow, resolver: string, deduction: bigint): DistributionsBody {
+  if (resolver !== escrow.roles.disputeResolver) throw new FianzaError("NOT_RESOLVER", "Solo el staff puede resolver");
+  if (fianzaStatus(escrow) !== "Stopped") throw new FianzaError("NOT_DISPUTED", "Solo se resuelve una fianza parada");
+  const funded = fromDecimal(escrow.amount);
+  if (deduction < 0n || deduction > funded) {
+    throw new FianzaError("INVALID_AMOUNT", "La deducción debe estar entre 0 y la fianza");
+  }
+  return {
+    contractId: escrow.contractId,
+    disputeResolver: resolver,
+    distributions: distributions([
+      [escrow.roles.receiver, funded - deduction],
+      [escrow.roles.serviceProvider, deduction],
+    ]),
+  };
+}
+
+/**
+ * Reparto del rendimiento que queda en el escrow tras resolver (`withdraw-remaining-funds`), según la
+ * política de la jurisdicción: `tenantYieldBps` para el inquilino y el resto para el casero.
+ * `remaining` sale de `getBalances` (ya no está en el vault, así que es exacto).
+ */
+export function buildWithdrawYieldBody(
+  escrow: Escrow,
   resolver: string,
-  deduction: bigint,
-): ResolveDisputeBody {
-  if (!escrow.roles.disputeResolvers.includes(resolver)) {
-    throw new FianzaError("NOT_RESOLVER", "Solo el staff puede resolver");
+  remaining: bigint,
+  tenantYieldBps: number,
+): DistributionsBody {
+  if (resolver !== escrow.roles.disputeResolver) throw new FianzaError("NOT_RESOLVER", "Solo el staff puede repartir");
+  if (!Number.isInteger(tenantYieldBps) || tenantYieldBps < 0 || tenantYieldBps > 10_000) {
+    throw new RangeError(`tenantYieldBps fuera de rango (0–10000): ${tenantYieldBps}`);
   }
-  if (fianzaStatus(escrow) !== "Stopped") {
-    throw new FianzaError("NOT_DISPUTED", "Solo se resuelve una fianza parada");
-  }
-  const balance = fromDecimal(escrow.balance);
-  if (deduction < 0n || deduction > balance) {
-    throw new FianzaError("INVALID_AMOUNT", "La deducción debe estar entre 0 y el saldo");
-  }
-  const landlord = escrow.roles.serviceProviders[0];
-  const distributions = [
-    { address: escrow.roles.receiver, amount: balance - deduction },
-    { address: landlord, amount: deduction },
-  ]
-    .filter((d) => d.amount > 0n)
-    .map((d) => ({ address: d.address, amount: toDecimal(d.amount) }));
-  return { contractId: escrow.contractId, disputeResolver: resolver, distributions };
+  if (remaining < 0n) throw new FianzaError("INVALID_AMOUNT", "El sobrante no puede ser negativo");
+  const toTenant = (remaining * BigInt(tenantYieldBps)) / BPS;
+  return {
+    contractId: escrow.contractId,
+    disputeResolver: resolver,
+    distributions: distributions([
+      [escrow.roles.receiver, toTenant],
+      [escrow.roles.serviceProvider, remaining - toTenant],
+    ]),
+  };
+}
+
+/** true si la dirección es una cuenta inteligente (passkey): la API de TW no la acepta como firmante. */
+export function isContractAddress(address: string): boolean {
+  return address.startsWith("C");
 }

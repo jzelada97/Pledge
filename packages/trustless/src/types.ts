@@ -1,41 +1,44 @@
-// Tipos de la API REST v2 de Trustless Work (Single-Release), según docs.trustlesswork.com
-// (v2-en/api-rest). Importes en decimales: `10` son 10 USDC.
+// Tipos de la API con rendimiento de Trustless Work: la API v1 de single-release más un vault de
+// DeFindex ("Guía de migración a TrustYield", 25-oct-2026; Swagger en <base>/docs). Las respuestas
+// de lectura están tomadas de escrows reales en testnet. Importes en decimales: `10` son 10 USDC.
 
 export interface TrustlineRef {
-  /** SAC del activo (`C…`). Alternativa: `symbol` + `address` (emisor `G…`). */
+  symbol: string;
+  /** Emisor del activo (`G…`). En testnet, el USDC de Blend. */
+  address: string;
+  /** SAC del activo; solo aparece en las lecturas. */
   contractId?: string;
-  symbol?: string;
-  address?: string;
 }
 
-export interface RolesV2 {
-  approvers: string[];
-  serviceProviders: string[];
-  platform: string;
-  releaseSigners: string[];
-  disputeResolvers: string[];
+/** Una dirección por rol (v1). */
+export interface Roles {
+  approver: string;
+  serviceProvider: string;
+  /** Cobra `platformFee` y es quien puede actualizar el escrow. */
+  platformAddress: string;
+  releaseSigner: string;
+  disputeResolver: string;
   receiver: string;
-  admin: string;
-  observers?: string[];
 }
 
 export interface MilestoneInput {
   description: string;
-  status?: string;
-  approvalsTarget?: number;
 }
 
-export interface DeployV2Body {
+export interface DeployBody {
+  /** Cuenta G que firma el despliegue (la API no admite una C-address como firmante). */
   signer: string;
   engagementId: string;
   title: string;
   description: string;
-  roles: RolesV2;
+  roles: Roles;
   amount: number;
-  /** Porcentaje sobre el total: `1` es un 1 %. */
+  /** Porcentaje sobre todo lo retirado (capital + rendimiento): `1` es un 1 %. */
   platformFee: number;
-  milestones?: MilestoneInput[];
-  trustline: TrustlineRef;
+  milestones: MilestoneInput[];
+  trustline: { symbol: string; address: string };
+  /** Vault de DeFindex. Sin él, la API usa el de Trustless Work. */
+  vault?: string;
 }
 
 export interface FundBody {
@@ -44,16 +47,11 @@ export interface FundBody {
   amount: number;
 }
 
-export interface ApproveMilestonesBody {
+export interface ApproveMilestoneBody {
   contractId: string;
+  /** Índice del hito como texto ("0"). */
+  milestoneIndex: string;
   approver: string;
-  milestoneIndexes: number[];
-}
-
-export interface ApproveAndReleaseBody {
-  contractId: string;
-  signer: string;
-  milestoneIndexes: number[];
 }
 
 export interface ReleaseFundsBody {
@@ -64,8 +62,6 @@ export interface ReleaseFundsBody {
 export interface DisputeBody {
   contractId: string;
   signer: string;
-  /** Máximo 500 caracteres; queda en la cadena. */
-  reason: string;
 }
 
 export interface Distribution {
@@ -73,61 +69,69 @@ export interface Distribution {
   amount: number;
 }
 
-export interface ResolveDisputeBody {
+/** Cuerpo de `resolve-dispute` y de `withdraw-remaining-funds`. */
+export interface DistributionsBody {
   contractId: string;
   disputeResolver: string;
-  /** Tienen que sumar exactamente el saldo del escrow. */
   distributions: Distribution[];
 }
 
 export interface UnsignedTransactionResponse {
-  unsignedXdr: string;
-  txHash: string;
-  /** Solo en el despliegue: la dirección que tendrá el escrow. */
-  contractId?: string | null;
+  unsignedTransaction: string;
 }
 
 export interface SendTransactionResponse {
-  txHash: string;
-  ledger: number;
-  contractId?: string;
-  escrow?: SingleReleaseV2Escrow;
-  code?: "STELLAR_TX_SUBMITTED" | "STELLAR_TX_SUBMITTED_INDEXER_LAGGING";
+  status?: string;
   message?: string;
+  /** En el despliegue: la dirección del escrow nuevo. */
+  contractId?: string;
+  escrow?: Escrow;
 }
 
-export interface MilestoneV2 {
+export interface EscrowMilestone {
   description: string;
   status: string;
   evidence: string;
-  approvals: { target: number; approvalCount: number; approvedBy: string[] };
+  approved: boolean;
 }
 
-export interface SingleReleaseV2Escrow {
-  type: string;
+/** Escrow tal y como lo devuelve `GET /helper/get-escrow-by-contract-ids`. */
+export interface Escrow {
   contractId: string;
-  contractBaseId: string;
+  contractBaseId?: string;
+  signer?: string;
+  type: string;
+  vault?: string;
   engagementId: string;
   title: string;
   description: string;
   amount: number;
+  /** Valor actual: con vault crece en cada ledger. */
   balance: number;
   platformFee: number;
-  receiverMemo: number;
+  roles: Roles;
+  flags: { disputed: boolean; released: boolean; resolved: boolean };
   trustline: TrustlineRef;
-  roles: RolesV2;
-  milestones: MilestoneV2[];
-  dispute: { isDisputed: boolean; reason: string; resolved: boolean };
-  released: boolean;
+  milestones: EscrowMilestone[];
+  isActive?: boolean;
 }
 
-export interface ProblemDetails {
-  type?: string;
-  title?: string;
-  status?: number;
-  code?: string;
-  detail?: string;
-  instance?: string;
-  traceId?: string;
-  extensions?: Record<string, unknown>;
+export interface EscrowBalance {
+  address: string;
+  balance: number;
+}
+
+export interface VaultPosition {
+  vault: string;
+  shares: number;
+  /** Valor en USDC de las shares. Tras liberar o resolver, 0. */
+  underlying: number;
+}
+
+/** Error de la API (NestJS). */
+export interface ApiErrorBody {
+  statusCode?: number;
+  message?: string | string[];
+  timestamp?: string;
+  path?: string;
 }
