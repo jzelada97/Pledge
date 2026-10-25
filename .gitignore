@@ -24,6 +24,3 @@ dist/
 # Sistema
 .DS_Store
 Thumbs.db
-
-# Snapshots que genera soroban-sdk al correr los tests
-test_snapshots/
