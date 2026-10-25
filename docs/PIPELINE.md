@@ -43,7 +43,7 @@ Regla: **cada flecha tiene un mock** desde la hora 2. Nadie espera a otro rol pa
 ## Fase 0 · Harness y fork (H0–H1) → G0
 | Rol | Tareas |
 |---|---|
-| P1 | Setup. **H0:30:** copiar `contracts/escrow/src/**` de TW `single-release-develop-v2` @ `1d22d0c1b9c5788f4fd7184e42024bbe10303756` a `contracts/escrow/`, con la cabecera de origen en cada archivo. `cargo build --target wasm32v1-none --release` y **tests upstream en verde** con nuestro toolchain. Medir el tamaño del wasm. `contracts/escrow/NOTICE.md` y `contracts/factory/NOTICE.md`. **No empujar código copiado hasta que `NOTICE.md` registre el permiso de TW** (el repo es público; security R-14). |
+| P1 | Setup. **H0:30:** copiar `contracts/escrow/src/**` de TW `single-release-develop-v2` @ `1d22d0c1b9c5788f4fd7184e42024bbe10303756` a `contracts/escrow/`, con la cabecera de origen en cada archivo. `cargo build --target wasm32v1-none --release` y **tests upstream en verde** con nuestro toolchain. Medir el tamaño del wasm. `contracts/escrow/NOTICE.md` y `contracts/factory/NOTICE.md` con la atribución a TW (permiso escrito de TW ya obtenido). |
 | P2 | Esqueleto del monorepo: workspace Cargo con `soroban-sdk = "28.0.0"` y perfil release copiado de TW, workspace pnpm. CI con el build del wasm del escrow **antes** de `cargo test -p factory`. Identidades del CLI (una por rol). PR de `harness/team.json` con el área `api` (ya incluido en este PR). |
 | P3, P4 | Clonar, `node scripts/harness/setup.mjs P<n>`, instalar toolchain (Node 20+, pnpm, gh). Probar `/estado`. P4: esqueleto Next ×2. |
 | Todos | Acordar las dependencias npm y crates principales (P2 las instala de una vez para evitar choques en el lockfile). |
