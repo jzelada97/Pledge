@@ -123,6 +123,22 @@ describe("parar y resolver", () => {
     expect(code(() => buildResolveBody(escrowFixture(), STAFF, 0n))).toBe("NOT_DISPUTED");
   });
 
+  // Si el vault perdió valor, repartir lo fondeado superaría el saldo y la resolución fallaría en
+  // cadena, dejando la fianza bloqueada: se reparte lo que queda y la pérdida la absorbe el inquilino.
+  it("con pérdida en el vault reparte el saldo disponible, nunca más", () => {
+    const lost = { ...stopped, balance: 450 }; // fondeado 500, el vault perdió 50
+    expect(buildResolveBody(lost, STAFF, 1_000_000_000n).distributions).toEqual([
+      { address: TENANT, amount: 350 },
+      { address: LANDLORD, amount: 100 },
+    ]);
+    expect(buildResolveBody(lost, STAFF, 0n).distributions).toEqual([{ address: TENANT, amount: 450 }]);
+    // La deducción no puede superar lo que queda.
+    expect(code(() => buildResolveBody(lost, STAFF, 4_500_000_001n))).toBe("INVALID_AMOUNT");
+    // Saldo con restos de coma flotante: se trunca a 7 decimales y se reparte como mucho eso.
+    const noisy = { ...stopped, balance: 449.99999999999994 };
+    expect(buildResolveBody(noisy, STAFF, 0n).distributions).toEqual([{ address: TENANT, amount: 449.9999999 }]);
+  });
+
   it("el rendimiento sobrante se reparte según la jurisdicción", () => {
     expect(buildWithdrawYieldBody(stopped, STAFF, 893n, 5000).distributions).toEqual([
       { address: TENANT, amount: 0.0000446 },
