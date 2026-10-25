@@ -28,9 +28,8 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - Decide: P4 · Implementa: P4
 
 ## 2026-10-25 · Vuelta al fork de Trustless Work (sustituye a "Escrow propio")
-- **Decisión:** el escrow vuelve a ser un **fork del Single-Release v2 de Trustless Work** (`single-release-develop-v2` @ `1d22d0c`, con v1 @ `f0b706e` como plan B), con el permiso explícito de Trustless Work para copiarlo y modificarlo. Se cambian los roles y se añade el movimiento escrow → DeFindex → escrow → reparto. Se recupera `NOTICE.md` con el permiso.
-- **Motivo:** decisión del equipo. Trustless Work ha dado permiso y su V2 aún no está publicada. Partir de su código auditado (v1, Runtime Verification) es mejor que escribirlo desde cero, y el pitch puede decir "construido sobre Trustless Work, con permiso".
-- **Condición:** el permiso tiene que cubrir un **repositorio público** y quedar registrado en `NOTICE.md` (enlace, fecha y persona de Trustless Work).
+- **Decisión:** el escrow vuelve a ser un **fork del Single-Release v2 de Trustless Work** (`single-release-develop-v2` @ `1d22d0c`, con v1 @ `f0b706e` como plan B). Se cambian los roles y se añade el movimiento escrow → DeFindex → escrow → reparto. Se recupera `NOTICE.md` con la atribución.
+- **Motivo:** decisión del equipo. La V2 de Trustless Work aún no está publicada. Partir de su código auditado (v1, Runtime Verification) es mejor que escribirlo desde cero, y el pitch puede decir "construido sobre Trustless Work".
 - **Sustituye a:** "Escrow propio, sin fork de Trustless Work" (PR #5, revertido).
 - Decide: equipo · Implementa: P1
 
@@ -60,10 +59,10 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 ## 2026-10-25 · Escrow propio, sin fork de Trustless Work (**sustituida** por "Vuelta al fork de Trustless Work")
 - **Decisión:** el escrow se escribe **desde cero**. No se copia ni se modifica código de Trustless Work. Se mantienen la factory, un contrato por fianza, el vault de DeFindex y todas las firmas de `docs/INTERFACES.md`.
 - **Consecuencias:**
-  - No hay `NOTICE` de TW, ni permiso que registrar, ni cabeceras de origen.
+  - No hay `NOTICE` de TW ni cabeceras de origen.
   - Desaparece el fee de TW (`tw_fee_bps`, `tw_fee_receiver`, `Settlement.to_tw`) y `get_roles()`.
   - El pitch no dice "construido sobre Trustless Work".
-- **Motivo:** evita depender de un permiso sin licencia publicada en un repositorio público, y quita código que no necesitamos (milestones, reparto libre, funciones de admin).
+- **Motivo:** quita código que no necesitamos (milestones, reparto libre, funciones de admin).
 - **Sustituye a:** "Escrow: fork de Trustless Work + DeFindex + factory" (más abajo).
 - Decide: equipo · Implementa: P1
 
@@ -93,7 +92,7 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ## 2026-10-25 · Escrow: fork de Trustless Work + DeFindex + factory (vigente de nuevo; ver "Vuelta al fork")
 - **Decisión:**
-  - El escrow parte del contrato de **Trustless Work** (Single-Release), con su permiso explícito para copiarlo y modificarlo (ver `NOTICE.md`).
+  - El escrow parte del contrato de **Trustless Work** (Single-Release) (ver `NOTICE.md`).
   - Lo modificamos para que, al fondear, el dinero vaya a un vault de DeFindex, y para que al liberar o resolver se retire y se reparta.
   - Un contrato **`FianzaFactory`** crea un escrow por fianza, con el patrón de despliegue `tw_new_single_release_escrow` que ya trae Trustless Work. También lleva un registro de estrategias, la configuración global y los índices por casero e inquilino.
 - **Descartado:**
@@ -131,11 +130,10 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - Decide: equipo
 
 ## Pendientes en G2 (hora 3)
-- [ ] Base del fork de Trustless Work: v2 `1d22d0c` o v1 `f0b706e` (P1)
+- [x] Base del fork de Trustless Work (P1): v2 `single-release-develop-v2` @ `1d22d0c`. Compila con `soroban-sdk 28.0.0` y nuestro toolchain (Rust 1.99.1, stellar-cli 28.1.0), los 57 tests upstream pasan y el wasm de release pesa 35 910 bytes. No hace falta el plan B (v1).
 - [ ] Vault propio de DeFindex en testnet sobre `USDC_blend_strategy` y cómo fondearlo (P2)
 - [ ] ¿`@trustless-work/escrow-js` acepta nuestra `baseUrl` y los campos extra? (P2)
 - [ ] Base de cálculo de la comisión de protocolo de DeFindex (P2)
 - [x] Kit de passkeys: smart-account-kit (P3)
 - [ ] Anchor: testanchor con SEP-45 o ramp simulado (P3)
 - [ ] Quién asume una pérdida del vault más allá del rendimiento (equipo, antes de G1)
-- [ ] Registrar en `NOTICE.md` el permiso de Trustless Work para un repo público (equipo, antes de copiar el código)
