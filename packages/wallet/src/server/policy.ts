@@ -11,6 +11,9 @@ export interface RelayPolicy {
     factory: string; // la instancia debe estar registrada aquí
     functions: string[]; // cancel, fund_escrow, approve_release, stop y los dos claims
   };
+  // Plan A: escrows de Trustless Work, reconocidos solo por su wasm (no están en nuestra factory).
+  // Funciones: fund_escrow, approve_milestone, release_funds, dispute_escrow.
+  externalEscrows?: { wasmHashes: string[]; functions: string[] };
   token: string; // única subinvocación permitida: token.transfer(firmante, …)
   createContractWasmHashes: string[]; // solo smart accounts (deployments.smartAccount.accountWasmHash)
   smartAccountDeployers: string[]; // dirección que despliega las cuentas (el deployer compartido del kit)
@@ -119,12 +122,20 @@ async function validateInvoke(
   if (fixed) {
     if (!fixed.includes(fn)) throw notAllowed(`${fn} no permitida en la factory`);
   } else {
-    // Escrow dinámico: las dos comprobaciones, porque el wasm es público y cualquiera puede desplegar
-    // una instancia propia (security R-3).
-    if (!policy.escrow.functions.includes(fn)) throw notAllowed(`${fn} no permitida`);
     const hash = await chain.wasmHashOf(contract);
-    if (!hash || !policy.escrow.wasmHashes.includes(hash)) throw notAllowed("wasm del escrow no permitido");
-    if (!(await chain.isRegisteredEscrow(policy.escrow.factory, contract))) throw notAllowed("escrow no registrado");
+    const external = policy.externalEscrows;
+    if (hash && policy.escrow.wasmHashes.includes(hash)) {
+      // Escrow de nuestra factory: las dos comprobaciones, porque el wasm es público y cualquiera puede
+      // desplegar una instancia propia (security R-3).
+      if (!policy.escrow.functions.includes(fn)) throw notAllowed(`${fn} no permitida`);
+      if (!(await chain.isRegisteredEscrow(policy.escrow.factory, contract))) throw notAllowed("escrow no registrado");
+    } else if (hash && external?.wasmHashes.includes(hash)) {
+      // Escrow de TW: no hay registro on-chain que consultar. Lo acotan la lista de funciones, que los
+      // firmantes sean cuentas nuestras y los topes de ritmo y de fee.
+      if (!external.functions.includes(fn)) throw notAllowed(`${fn} no permitida`);
+    } else {
+      throw notAllowed("wasm del escrow no permitido");
+    }
   }
 
   if (auth.length === 0 && !PERMISSIONLESS_FUNCTIONS.has(fn)) throw notAllowed(`${fn} necesita auth`);

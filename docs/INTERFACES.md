@@ -618,6 +618,10 @@ export interface WalletConfig {
   sendTransactionPath?: string;     // por defecto "/api/stellar/send-transaction"
   factory: string; token: string;   // deployments.factory, deployments.token
   isRegisteredEscrow(addr: string): Promise<boolean>; // factory.id_of(addr) no da NotFound
+  trustless?: {                     // plan A: escrows con rendimiento de Trustless Work (API v1 + vault)
+    isEscrow(addr: string): Promise<boolean>; // su wasm está en la lista permitida (testnet: 828ae584…4b95)
+    feeAddress: string;             // dirección de la comisión de TW: release_funds la recibe como argumento
+  };
 }
 export function createWallet(cfg: WalletConfig): Wallet; // lanza WRONG_ORIGIN si location.hostname !== rpId
 export class FakeWallet implements Wallet { constructor(delayMs?: number); failNext(code: WalletErrorCode): void }
@@ -638,6 +642,7 @@ export class WalletError extends Error { code: WalletErrorCode; contractError?: 
 Reglas de `signAndSend` (security WEB-3 v2, AUTH-5):
 - Antes de pedir la passkey decodifica las auth entries de la C-address. La raíz debe ser `deployments.factory` o un escrow con `factory.id_of(addr)` válido, con una función de la lista del Relayer. Las subinvocaciones deben ser **exactamente** las del § 7: en `fund_escrow`, el importe sale de `expected_terms.amount`; en `stop`, de `opts.expectedTransferAmount`. Si no, `AUTH_MISMATCH` y no se firma.
 - Los *claims* no llevan firma. Ninguna entrada puede tener credenciales `SOURCE_ACCOUNT`.
+- **Plan A (escrow de TW, `cfg.trustless`):** funciones `fund_escrow(signer, expected_escrow, amount)` (una sola subinvocación `token.transfer(firmante, escrow, amount)`, con `amount` del tercer argumento), `approve_milestone`, `release_funds` (sin subinvocaciones; el segundo argumento tiene que ser `cfg.trustless.feeAddress`) y `dispute_escrow`. La API de TW no admite una cuenta `C…` como firmante (#61), así que estas llamadas se construyen contra el contrato y se envían por el Relayer.
 - `signatureExpirationLedger = latestLedger + 60`.
 
 **`@fianzas/wallet/server` (solo servidor, `import "server-only"`):**
@@ -648,6 +653,10 @@ export interface RelayPolicy {
     wasmHashes: string[];                     // deployments.escrowWasmHashesAllowed
     factory: string;                          // la instancia debe estar registrada aquí
     functions: string[];                      // ["cancel","fund_escrow","approve_release","stop","claim_after_timeout","claim_after_review_timeout"]
+  };
+  externalEscrows?: {                         // plan A: escrows de TW, reconocidos solo por su wasm (sin factory)
+    wasmHashes: string[];                     // testnet: ["828ae58429c6bf7a2da16784d89871f11e07fd7a82326de7f0817c80c02e4b95"]
+    functions: string[];                      // ["fund_escrow","approve_milestone","release_funds","dispute_escrow"]
   };
   token: string;                              // única subinvocación: token.transfer del propio firmante
   createContractWasmHashes: string[];         // solo smart accounts (también: los firmantes deben ser cuentas de este wasm)
