@@ -3,7 +3,7 @@
 Plataforma para caseros y grandes caseros. Cada fianza de habitación es un **escrow propio** creado por un **factory** (`FianzaFactory`).
 
 - **El escrow es un fork del contrato de Trustless Work**, hecho con su permiso (ver `NOTICE.md`), al que añadimos el depósito en **DeFindex**. Por defecto usa el vault sobre el **Blend Fixed Pool USDC**, que rinde ~6-7 % variable y **nunca es "sin riesgo"**.
-- **La fianza vuelve entera al inquilino** cuando **casero e inquilino aprueban**. Solo se reparte el **rendimiento**: un % para la plataforma y el resto según el preset del país.
+- **La fianza vuelve entera al inquilino** cuando **casero e inquilino aprueban**. Solo se reparte el **rendimiento**: un % para la plataforma y el resto según la **jurisdicción** (`GlobalConfig.tenant_yield_bps`; ni casero ni inquilino lo eligen). MVP en **Portugal: todo al casero**.
 - **Solo el casero puede parar**, depositando un **stop bond**. El staff asigna un **perito** y resuelve:
   - si la parada estaba justificada, el bond vuelve al casero;
   - si no, va a la tesorería, que paga al perito.
@@ -61,7 +61,7 @@ Hackatón de 28 horas, 4 personas, testnet.
 - Sin secretos en el repo. Variables en `.env.local` (ignorado), con ejemplo en `.env.example`.
 
 ## Glosario
-fianza (deposit), casero (landlord), inquilino (tenant), staff, perito (expert), política de yield (`tenant_yield_bps`, de 0 a 10000), fee de plataforma (`platform_fee_bps`, sobre el rendimiento), aprobar devolución (`approve_release`), parar (`stop`), depósito por parar (`stop_bond`), parada justificada (`stop_justified`), resolver (`resolve`), estrategia (vault de DeFindex del registro del factory), factory (`FianzaFactory`).
+fianza (deposit), casero (landlord), inquilino (tenant), staff, perito (expert), reparto del rendimiento por jurisdicción (`tenant_yield_bps` en `GlobalConfig`, de 0 a 10000; Portugal = 0), fee de plataforma (`platform_fee_bps`, sobre el rendimiento), aprobar devolución (`approve_release`), parar (`stop`), depósito por parar (`stop_bond`), parada justificada (`stop_justified`), resolver (`resolve`), estrategia (vault de DeFindex del registro del factory), factory (`FianzaFactory`).
 
 ## Comandos de Claude Code del equipo
 `/tarea <issue>` empezar una tarea · `/pr` checks, commit, push y PR · `/bloqueo <qué>` reportar un bloqueo · `/sync` ponerse al día con main · `/estado` panel del equipo · `/lock <área>` / `/unlock <área>`.

@@ -271,7 +271,7 @@ pub struct Terms {                // inmutable desde el constructor; el inquilin
     pub landlord: Address,
     pub amount: i128,
     pub end_ts: u64,
-    pub tenant_yield_bps: u32,
+    pub tenant_yield_bps: u32,    // copia de GlobalConfig.tenant_yield_bps al crear (#16); el casero no lo elige
     pub strategy: Strategy,       // snapshot
     pub platform_fee_bps: u32,    // sobre el rendimiento
     pub tw_fee_bps: u32,          // sobre el rendimiento (Q-16)
@@ -410,6 +410,7 @@ pub struct GlobalConfig {
     pub review_timeout_secs: u64,       // demo 300; prod 30 días; ≥ 60
     pub stop_bond_min: i128,            // demo 100_000_000 (10 USDC); 0..=MAX_AMOUNT
     pub stop_bond_bps: u32,             // demo 500; ≤ 2000
+    pub tenant_yield_bps: u32,          // parte del rendimiento neto para el inquilino, según la jurisdicción (#16). MVP (Portugal): 0 → todo al casero; ≤ 10000
     pub vault_manager: Option<Address>, // Some ⇒ add_strategy exige vault.get_manager() == esto (vaults propios; mainnet). Testnet: None
 }
 
@@ -419,7 +420,6 @@ pub struct FianzaParams {
     pub invite_hash: Option<BytesN<32>>,
     pub amount: i128,
     pub end_ts: u64,
-    pub tenant_yield_bps: u32,          // preset de país (INTERFACES § 6)
     pub strategy_id: Option<Symbol>,    // None → estrategia por defecto
     pub nonce: BytesN<32>,              // salt = sha256(landlord ‖ nonce): dirección del escrow conocida ANTES de firmar (compatibilidad con el `contractId` del deploy de TW)
 }
@@ -435,7 +435,7 @@ pub struct FianzaSummary { pub id: u64, pub escrow: Address, pub data: Escrow, p
 | Función | Auth | Precondiciones (error) | Efecto |
 |---|---|---|---|
 | `__constructor(admin, escrow_wasm_hash: BytesN<32>, config: GlobalConfig)` | — | config válida (InvalidConfig) | — |
-| `create_fianza(landlord: Address, p: FianzaParams) -> Created` | `landlord` | no pausada (Paused); estrategia existe (StrategyNotFound) y `enabled` (StrategyDisabled); `amount ∈ (0, MAX_AMOUNT]` (InvalidAmount); `now < end_ts ≤ now + MAX_TERM_SECS` (InvalidEndTs); `tenant_yield_bps ≤ 10000` (InvalidBps); exactamente uno de `tenant`/`invite_hash` (InvalidInvite); `landlord`/`tenant` ∉ {staff, treasury, factory, token, vault, tw_fee_receiver} (InvalidParty); `tenant ≠ landlord` (SameParty); si hay vault: `(vf, pf) = vault.get_fees()` con `vf ≤ strategy.max_vault_fee_bps` y `pf ≤ 10000` (VaultFeeTooHigh) | `id = next_id`; `salt = sha256(landlord ‖ nonce)` (dirección ya ocupada → `NonceUsed`); `deployer().with_current_contract(salt).deploy_v2(wasm_hash, (EscrowInit,))` con `Terms.defindex_vault_fee_bps = vf` y `defindex_protocol_fee_bps = pf`; registra `Escrow(id)`, `IdOf(addr)` e índice del casero; evento `f_created` |
+| `create_fianza(landlord: Address, p: FianzaParams) -> Created` | `landlord` | no pausada (Paused); estrategia existe (StrategyNotFound) y `enabled` (StrategyDisabled); `amount ∈ (0, MAX_AMOUNT]` (InvalidAmount); `now < end_ts ≤ now + MAX_TERM_SECS` (InvalidEndTs); exactamente uno de `tenant`/`invite_hash` (InvalidInvite); `landlord`/`tenant` ∉ {staff, treasury, factory, token, vault, tw_fee_receiver} (InvalidParty); `tenant ≠ landlord` (SameParty); si hay vault: `(vf, pf) = vault.get_fees()` con `vf ≤ strategy.max_vault_fee_bps` y `pf ≤ 10000` (VaultFeeTooHigh) | `id = next_id`; `salt = sha256(landlord ‖ nonce)` (dirección ya ocupada → `NonceUsed`); `deployer().with_current_contract(salt).deploy_v2(wasm_hash, (EscrowInit,))` con `Terms.defindex_vault_fee_bps = vf`, `defindex_protocol_fee_bps = pf` y `tenant_yield_bps = config.tenant_yield_bps`; registra `Escrow(id)`, `IdOf(addr)` e índice del casero; evento `f_created` |
 | `predict_address(landlord, nonce) -> Address` | — | — | dirección que tendrá el escrow (`deployer().with_current_contract(salt).deployed_address()`); la usa la API para devolver `contractId` en el build |
 | `create_fianzas_batch(landlord, items: Vec<FianzaParams>) -> Vec<Created>` **[Could]** | `landlord` (una sola firma) | `1 ≤ len ≤ MAX_BATCH` (TooMany); cada item como arriba; atómica | N despliegues. El límite real lo mide el spike (§ 10) |
 | `register_tenant(id: u64, tenant: Address)` | **el escrow** (`escrow_of(id).require_auth()`, implícita al ser invocador directo) | `escrow_of(id)` existe (NotFound); el llamante es ese escrow (NotEscrow); no registrado (AlreadyRegistered) | índice del inquilino; evento `f_tenant` |
@@ -472,7 +472,7 @@ pub enum FactoryError {
     VaultFeeTooHigh = 18, VaultNotPlatformManaged = 19, NonceUsed = 20,
 }
 ```
-Validación de `GlobalConfig`: `platform_fee_bps + tw_fee_bps ≤ 10000`, `platform_fee_bps ≤ 5000`, `stop_bond_bps ≤ 2000`, `timeout_secs ≥ 60`, `review_timeout_secs ≥ 60`, `staff` de 1 a 3 sin duplicados, `treasury ∉ staff`, `tw_fee_bps > 0 ⇒ tw_fee_receiver.is_some()` y `staff`, `treasury` ≠ factory.
+Validación de `GlobalConfig`: `platform_fee_bps + tw_fee_bps ≤ 10000`, `platform_fee_bps ≤ 5000`, `stop_bond_bps ≤ 2000`, `tenant_yield_bps ≤ 10000`, `timeout_secs ≥ 60`, `review_timeout_secs ≥ 60`, `staff` de 1 a 3 sin duplicados, `treasury ∉ staff`, `tw_fee_bps > 0 ⇒ tw_fee_receiver.is_some()` y `staff`, `treasury` ≠ factory.
 
 ### 6.4 Reparto (`modules/split`, puro) [AD-15]
 
@@ -557,7 +557,7 @@ fn get_manager(e: Env) -> Result<Address, ContractError>;   // solo lo usa la fa
 - **§ 4 `Wallet`** += `signAndSendBuilt(res: UnsignedTransactionResponse, opts?: { onPhase }) => Promise<{ hash }>`: con `res.soroban` firma las auth entries con la passkey y envía a `/api/fianzas/v1/relay`; sin él (cuenta G) firma el XDR y llama a `/api/stellar/send-transaction` (§ 6.8.4). `WalletConfig.relayPath = "/api/fianzas/v1/relay"`.
 - **§ 4b `@fianzas/wallet/server`:** nueva `RelayPolicy` (§ 8.2). La monta `apps/api` (P2) en `/fianzas/v1/relay`, no `apps/web`.
 - **§ 5 y § 5b (anchor y ramp simulado):** sin cambios.
-- **§ 6 Presets:** `tenant_yield_bps` por **preset de país**. Los presets se quedan en el front y no afirman la ley.
+- **§ 6 Rendimiento por jurisdicción (#16):** sin presets. `tenant_yield_bps` lo fija `GlobalConfig` (MVP Portugal: 0, todo al casero); el front solo lo lee de `Terms` y no afirma la ley.
 
 ### 6.8 API propia compatible con la Core API v2 de Trustless Work (P2) [AD-19]
 
@@ -721,7 +721,7 @@ Auth: **A** = anónima de la misma origin; **K** = `x-api-key`; **A/K** = cualqu
 | GET | `/escrow/single-release/v2/escrow-balances` | A/K | `addresses` (≤ 20) | `[{ address, balance, trustlineDecimals }]` | — | `escrow.get_view` |
 | GET | `/escrows` | A/K | `limit, cursor, includeSnapshot, order, status, contractIds, participant, role, engagementId, scope` | `{ data, hasMore, nextCursor }` | — | `factory.list_by_*` + `get_fianzas` |
 | GET | `/escrows/{contractId}` · `/escrows/details` · `/escrows/{contractId}/events` · `/escrows/{contractId}/milestones` · `/escrows/milestones` · `/escrows/financial` | A/K | según TW | según TW (+ campos) | — | lecturas |
-| POST | `/fianzas/v1/fianzas` | A/K | `{ signer, tenant?, inviteHash?, amount, endTs, tenantYieldBps, strategyId?, nonce }` | UTR (`contractId` predicho) | casero | `factory.create_fianza` |
+| POST | `/fianzas/v1/fianzas` | A/K | `{ signer, tenant?, inviteHash?, amount, endTs, strategyId?, nonce }` | UTR (`contractId` predicho) | casero | `factory.create_fianza` |
 | POST | `/fianzas/v1/fianzas/batch` [Could] | K | `{ signer, items: [...] }` | UTR | casero | `factory.create_fianzas_batch` |
 | GET | `/fianzas/v1/config` | A/K | — | `GlobalConfig` + `paused` | — | `factory.config` |
 | GET | `/fianzas/v1/strategies` | A/K | — | `[{ id, kind, vault, assetName, risk, simulated, enabled, isDefault, maxVaultFeeBps, vaultFeeBps, protocolFeeBps, supplyApy, apyLabel, updatedAt }]` | — | `factory.strategies` + `vault.get_fees` + Blend |
@@ -993,7 +993,7 @@ sequenceDiagram
 | **G1 (H1–H2)** | `/lock interfaces` con § 6 de este documento. Recorte del fork (elimina funciones de § 5), `types.rs`, `error.rs`, `split` + matriz | Revisa § 6.5 y § 6.6. Empieza `mock-vault` con la interfaz de DeFindex (incluidos `get_fees`/`get_manager`). Lleva § 6.8.9 (API) al `/lock interfaces` | Revisa § 6.7 y § 8.2 | Baja fidelidad: creación con selector de estrategia, aviso de riesgo, parada con bond |
 | **G2 (H1–H3)** | Spike del quórum y de la factory mínima (§ 10) | Spike del vault (§ 10). `mock-vault` entregado (H3). Esqueleto de `apps/api` (Hono, Problem Details, `/fianzas/v1/config`, `/stellar/send-transaction`) y montaje de relay y ramp | Spike de passkeys contra una instancia de la factory | Pantallas contra `FakeWallet` y fixtures `FianzaSummary` |
 | **H3–H5** | **Todas las firmas públicas** de escrow y factory compiladas (las de la fase 5 con cuerpo provisional `BadStatus`). Factory: config, registro, índices y `register_tenant` | `deploy.mjs`: sube el wasm del escrow → despliega la factory → `add_strategy` ×3 → `set_default_strategy`. `bindings.sh` (factory, escrow, token). **Primer despliegue en H5**. API: lecturas (`GET /escrow/single-release/v2/{contractId}`, `/fianzas/v1/.../terms`, `/view`, `/strategies`, listas) con cliente `@fianzas/api/client` | `FakeWallet`/`FakeAnchor`; `createRelayHandler` con `RelayPolicy` nueva y tests | Bindings reales (H5), `SignButton` |
-| **Fase 3 (H5–H10)** | `fund_escrow` (invitación, `expected_terms`, vault, `register_tenant`), `approve_release` + `settle` + `split`, `cancel`, lecturas, `funding_allowed`, tests de auth y estado, test con cuenta contrato | `fund.mjs` (trustlines de tesorería y del receptor del fee de TW, faucet, reserva del mock, bond de los caseros demo); `e2e/happy.mjs` **a través de la API** (build → firma → envío). API: builds de `fianzas`, `fund`, `approve-milestones`, `approve-and-release-milestones`, `cancel` y la extensión `soroban` para C-address | `createWallet` real | Panel (lista paginada + precio por share), creación con estrategia y preset, flujo del inquilino |
+| **Fase 3 (H5–H10)** | `fund_escrow` (invitación, `expected_terms`, vault, `register_tenant`), `approve_release` + `settle` + `split`, `cancel`, lecturas, `funding_allowed`, tests de auth y estado, test con cuenta contrato | `fund.mjs` (trustlines de tesorería y del receptor del fee de TW, faucet, reserva del mock, bond de los caseros demo); `e2e/happy.mjs` **a través de la API** (build → firma → envío). API: builds de `fianzas`, `fund`, `approve-milestones`, `approve-and-release-milestones`, `cancel` y la extensión `soroban` para C-address | `createWallet` real | Panel (lista paginada + precio por share), creación con estrategia y enlace de invitación, flujo del inquilino |
 | **G3 (H10–H12)** | Fusiona; avisa a P2 | Integración: redeploy, bindings y `deployments.json`. **Fianza larga** con `usdc_fixed` (o `usdc_mock`) y `/api` en el dominio definitivo | Cambio a real (`signAndSendBuilt`); cuentas demo en el dominio definitivo | `NEXT_PUBLIC_USE_FAKES=0`; camino feliz |
 | **Fase 5 (H12–H16)** | (H14–H16) `stop` + bond, `assign_expert`, `record_report`, `resolve` con `stop_justified`, `claim_after_timeout`, `claim_after_review_timeout` y tests de security § 12.9 | (H12–H14) `e2e/stop.mjs` (los dos valores de `stop_justified`), `e2e/timeout.mjs`, `e2e/review-timeout.mjs` y cuenta de staff. API: `stop`, `assign-expert`, `record-report`, `resolve`, `claim-*`, `preview-settlement` y los `501` con `replacement` | (H14–H16) Ramp simulado | (H12–H14) Backoffice con `stop_justified` explícito |
 | **G4 (H16–H22)** | `create_fianzas_batch` **(Could)**, bordes temporales y `evil_vault` | Redeploy final, AC-13 (≤ 10 min). API: `/escrows*`, `/financial`, `/events`, API keys y prueba con `@trustless-work/escrow-js` cambiando la `baseUrl` | Robustez | Timeout y revisión vencida en la UI, feed de eventos, `check-copy.mjs` |

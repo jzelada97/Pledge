@@ -25,7 +25,7 @@ Convenciones: importes `i128` en la unidad mínima del token (7 decimales) y por
 **Vinculación del inquilino invitado** (se mantiene [AD-3] y FR-2):
 1. El navegador del casero genera `code = getRandomValues(32 B)` e `invite_hash = sha256(code)`, y llama a `create_fianza(landlord, { tenant: None, invite_hash: Some(h), … })`.
 2. Enlace: `https://<dominio>/i/<id>#c=<base64url(code)>`. El **`id`** se resuelve a la dirección del escrow con `factory.escrow_of(id)`, nunca desde la URL (WEB-2 y WEB-11).
-3. El inquilino crea su passkey, lee `get_terms()`, ve las condiciones y la estrategia con su aviso de riesgo, y firma `fund_escrow(tenant, Some(code), expected_terms)`. Antes de pedir la passkey, el front comprueba que `terms.factory`, `terms.treasury`, `terms.dispute_resolvers`, `terms.strategy.vault` y `terms.tw_fee_bps`, `terms.defindex_vault_fee_bps` coinciden con `deployments/testnet.json`. Si no coinciden, no deja fondear (security WEB-14).
+3. El inquilino crea su passkey, lee `get_terms()`, ve las condiciones y la estrategia con su aviso de riesgo, y firma `fund_escrow(tenant, Some(code), expected_terms)`. Antes de pedir la passkey, el front comprueba que `terms.factory`, `terms.treasury`, `terms.dispute_resolvers`, `terms.strategy.vault` y `terms.tw_fee_bps`, `terms.defindex_vault_fee_bps` y `terms.tenant_yield_bps` coinciden con `deployments/testnet.json`. Si no coinciden, no deja fondear (security WEB-14).
 4. El escrow comprueba `sha256(code) == invite_hash`, fija `tenant`, `approvers += tenant` y llama a `factory.register_tenant(id, tenant)`, que comprueba que el llamante es `escrow_of(id)` y añade el id al índice del inquilino.
 5. Si el casero conoce la dirección (`tenant: Some(t)`, `invite_hash: None`), `fund_escrow` exige `tenant == t`. Exactamente uno de los dos debe estar presente.
 
@@ -68,7 +68,7 @@ pub struct Terms {                // inmutable desde el constructor; el inquilin
     pub landlord: Address,
     pub amount: i128,
     pub end_ts: u64,
-    pub tenant_yield_bps: u32,
+    pub tenant_yield_bps: u32,    // copia de GlobalConfig.tenant_yield_bps al crear (#16); el casero no lo elige
     pub strategy: Strategy,       // snapshot
     pub platform_fee_bps: u32,    // sobre el rendimiento
     pub tw_fee_bps: u32,          // sobre el rendimiento (Q-16)
@@ -210,6 +210,7 @@ pub struct GlobalConfig {
     pub review_timeout_secs: u64,       // demo 300; prod 30 días; ≥ 60
     pub stop_bond_min: i128,            // demo 100_000_000 (10 USDC); 0..=MAX_AMOUNT
     pub stop_bond_bps: u32,             // demo 500; ≤ 2000
+    pub tenant_yield_bps: u32,          // parte del rendimiento neto para el inquilino, según la jurisdicción (#16). MVP (Portugal): 0 → todo al casero; ≤ 10000
     pub vault_manager: Option<Address>, // Some ⇒ add_strategy exige vault.get_manager() == esto (vaults propios; mainnet). Testnet: None
 }
 
@@ -219,7 +220,6 @@ pub struct FianzaParams {
     pub invite_hash: Option<BytesN<32>>,
     pub amount: i128,
     pub end_ts: u64,
-    pub tenant_yield_bps: u32,          // preset de país (INTERFACES § 6)
     pub strategy_id: Option<Symbol>,    // None → estrategia por defecto
     pub nonce: BytesN<32>,              // salt = sha256(landlord ‖ nonce): dirección del escrow conocida ANTES de firmar (compatibilidad con el `contractId` del deploy de TW)
 }
@@ -235,7 +235,7 @@ pub struct FianzaSummary { pub id: u64, pub escrow: Address, pub data: Escrow, p
 | Función | Auth | Precondiciones (error) | Efecto |
 |---|---|---|---|
 | `__constructor(admin, escrow_wasm_hash: BytesN<32>, config: GlobalConfig)` | — | config válida (InvalidConfig) | — |
-| `create_fianza(landlord: Address, p: FianzaParams) -> Created` | `landlord` | no pausada (Paused); estrategia existe (StrategyNotFound) y `enabled` (StrategyDisabled); `amount ∈ (0, MAX_AMOUNT]` (InvalidAmount); `now < end_ts ≤ now + MAX_TERM_SECS` (InvalidEndTs); `tenant_yield_bps ≤ 10000` (InvalidBps); exactamente uno de `tenant`/`invite_hash` (InvalidInvite); `landlord`/`tenant` ∉ {staff, treasury, factory, token, vault, tw_fee_receiver} (InvalidParty); `tenant ≠ landlord` (SameParty); si hay vault: `(vf, pf) = vault.get_fees()` con `vf ≤ strategy.max_vault_fee_bps` y `pf ≤ 10000` (VaultFeeTooHigh) | `id = next_id`; `salt = sha256(landlord ‖ nonce)` (dirección ya ocupada → `NonceUsed`); `deployer().with_current_contract(salt).deploy_v2(wasm_hash, (EscrowInit,))` con `Terms.defindex_vault_fee_bps = vf` y `defindex_protocol_fee_bps = pf`; registra `Escrow(id)`, `IdOf(addr)` e índice del casero; evento `f_created` |
+| `create_fianza(landlord: Address, p: FianzaParams) -> Created` | `landlord` | no pausada (Paused); estrategia existe (StrategyNotFound) y `enabled` (StrategyDisabled); `amount ∈ (0, MAX_AMOUNT]` (InvalidAmount); `now < end_ts ≤ now + MAX_TERM_SECS` (InvalidEndTs); exactamente uno de `tenant`/`invite_hash` (InvalidInvite); `landlord`/`tenant` ∉ {staff, treasury, factory, token, vault, tw_fee_receiver} (InvalidParty); `tenant ≠ landlord` (SameParty); si hay vault: `(vf, pf) = vault.get_fees()` con `vf ≤ strategy.max_vault_fee_bps` y `pf ≤ 10000` (VaultFeeTooHigh) | `id = next_id`; `salt = sha256(landlord ‖ nonce)` (dirección ya ocupada → `NonceUsed`); `deployer().with_current_contract(salt).deploy_v2(wasm_hash, (EscrowInit,))` con `Terms.defindex_vault_fee_bps = vf`, `defindex_protocol_fee_bps = pf` y `tenant_yield_bps = config.tenant_yield_bps`; registra `Escrow(id)`, `IdOf(addr)` e índice del casero; evento `f_created` |
 | `predict_address(landlord, nonce) -> Address` | — | — | dirección que tendrá el escrow (`deployer().with_current_contract(salt).deployed_address()`); la usa la API para devolver `contractId` en el build |
 | `create_fianzas_batch(landlord, items: Vec<FianzaParams>) -> Vec<Created>` **[Could]** | `landlord` (una sola firma) | `1 ≤ len ≤ MAX_BATCH` (TooMany); cada item como arriba; atómica | N despliegues. El límite real lo mide el spike (§ 10) |
 | `register_tenant(id: u64, tenant: Address)` | **el escrow** (`escrow_of(id).require_auth()`, implícita al ser invocador directo) | `escrow_of(id)` existe (NotFound); el llamante es ese escrow (NotEscrow); no registrado (AlreadyRegistered) | índice del inquilino; evento `f_tenant` |
@@ -267,12 +267,12 @@ pub struct FianzaSummary { pub id: u64, pub escrow: Address, pub data: Escrow, p
 pub enum FactoryError {
     NotFound = 1, Paused = 2, InvalidConfig = 3, StrategyNotFound = 4, StrategyDisabled = 5,
     StrategyExists = 6, InvalidStrategy = 7, NotEscrow = 8, TooMany = 9, InvalidAmount = 10,
-    InvalidEndTs = 11, InvalidInvite = 12, InvalidParty = 13, InvalidBps = 14,
+    InvalidEndTs = 11, InvalidInvite = 12, InvalidParty = 13, InvalidBps = 14 /* sin uso desde #16; se conserva el número */,
     AlreadyRegistered = 15, SameParty = 16, Arithmetic = 17,
     VaultFeeTooHigh = 18, VaultNotPlatformManaged = 19, NonceUsed = 20,
 }
 ```
-Validación de `GlobalConfig`: `platform_fee_bps + tw_fee_bps ≤ 10000`, `platform_fee_bps ≤ 5000`, `stop_bond_bps ≤ 2000`, `timeout_secs ≥ 60`, `review_timeout_secs ≥ 60`, `staff` de 1 a 3 sin duplicados, `treasury ∉ staff`, `tw_fee_bps > 0 ⇒ tw_fee_receiver.is_some()` y `staff`, `treasury` ≠ factory.
+Validación de `GlobalConfig`: `platform_fee_bps + tw_fee_bps ≤ 10000`, `platform_fee_bps ≤ 5000`, `stop_bond_bps ≤ 2000`, `tenant_yield_bps ≤ 10000`, `timeout_secs ≥ 60`, `review_timeout_secs ≥ 60`, `staff` de 1 a 3 sin duplicados, `treasury ∉ staff`, `tw_fee_bps > 0 ⇒ tw_fee_receiver.is_some()` y `staff`, `treasury` ≠ factory.
 
 ## 4. Reparto (`modules/split`, puro) [AD-15]
 
@@ -335,7 +335,7 @@ fn get_manager(e: Env) -> Result<Address, ContractError>;   // solo lo usa la fa
     { "id": "custody",   "kind": "noyield",  "vault": null, "risk": "noyield", "simulated": false, "default": false }
   ],
   "defindex": { "factory": "CDSCWE4GLNBYYTES2OCYDFQA2LLY4RBIAX6ZI32VSUXD7GO6HRPO4A32", "vaultWasmHash": "f345228d…" },
-  "admin": "G…", "staff": ["G…"], "treasury": "G…", "twFeeBps": 0, "twFeeReceiver": null,
+  "admin": "G…", "staff": ["G…"], "treasury": "G…", "twFeeBps": 0, "twFeeReceiver": null, "tenantYieldBps": 0,
   "faucet": "G…", "readSource": "G…",
   "relayer": "https://channels.openzeppelin.com/testnet",
   "smartAccount": { "accountWasmHash": "…", "webauthnVerifier": "C… | null" },
@@ -357,7 +357,7 @@ fn get_manager(e: Env) -> Result<Address, ContractError>;   // solo lo usa la fa
 - **§ 10 `Wallet`** += `signAndSendBuilt(res: UnsignedTransactionResponse, opts?: { onPhase }) => Promise<{ hash }>`: con `res.soroban` firma las auth entries con la passkey y envía a `/api/fianzas/v1/relay`; sin él (cuenta G) firma el XDR y llama a `/api/stellar/send-transaction` (§ 8.4). `WalletConfig.relayPath = "/api/fianzas/v1/relay"`.
 - **§ 10 `@fianzas/wallet/server`:** nueva `RelayPolicy` (arquitectura § 8.2, con los topes de security N-3). La monta `apps/api` (P2) en `/fianzas/v1/relay`, no `apps/web`.
 - **§ 11 (anchor y ramp simulado):** sin cambios de interfaz; se añaden las restricciones del ramp simulado.
-- **§ 12 Presets:** `tenant_yield_bps` por **preset de país**. Los presets se quedan en el front y no afirman la ley.
+- **§ 12 Rendimiento por jurisdicción:** sin presets. `tenant_yield_bps` lo fija `GlobalConfig` (#16); el front solo lo lee de `Terms` y no afirma la ley.
 
 ## 8. API propia compatible con la Core API v2 de Trustless Work (P2) [AD-19]
 
@@ -521,7 +521,7 @@ Auth: **A** = anónima de la misma origin; **K** = `x-api-key`; **A/K** = cualqu
 | GET | `/escrow/single-release/v2/escrow-balances` | A/K | `addresses` (≤ 20) | `[{ address, balance, trustlineDecimals }]` | — | `escrow.get_view` |
 | GET | `/escrows` | A/K | `limit, cursor, includeSnapshot, order, status, contractIds, participant, role, engagementId, scope` | `{ data, hasMore, nextCursor }` | — | `factory.list_by_*` + `get_fianzas` |
 | GET | `/escrows/{contractId}` · `/escrows/details` · `/escrows/{contractId}/events` · `/escrows/{contractId}/milestones` · `/escrows/milestones` · `/escrows/financial` | A/K | según TW | según TW (+ campos) | — | lecturas |
-| POST | `/fianzas/v1/fianzas` | A/K | `{ signer, tenant?, inviteHash?, amount, endTs, tenantYieldBps, strategyId?, nonce }` | UTR (`contractId` predicho) | casero | `factory.create_fianza` |
+| POST | `/fianzas/v1/fianzas` | A/K | `{ signer, tenant?, inviteHash?, amount, endTs, strategyId?, nonce }` | UTR (`contractId` predicho) | casero | `factory.create_fianza` |
 | POST | `/fianzas/v1/fianzas/batch` [Could] | K | `{ signer, items: [...] }` | UTR | casero | `factory.create_fianzas_batch` |
 | GET | `/fianzas/v1/config` | A/K | — | `GlobalConfig` + `paused` | — | `factory.config` |
 | GET | `/fianzas/v1/strategies` | A/K | — | `[{ id, kind, vault, assetName, risk, simulated, enabled, isDefault, maxVaultFeeBps, vaultFeeBps, protocolFeeBps, supplyApy, apyLabel, updatedAt }]` | — | `factory.strategies` + `vault.get_fees` + Blend |
@@ -697,12 +697,13 @@ export function createSimRampHandler(cfg: {
 - `amount` validado con `^\d{1,6}(\.\d{1,7})?$` y convertido con `BigInt`. Topes por petición, por dirección, por IP y global por hora. Con `RAMP_ENABLED=0` responde `403`. Una transacción de la faucet a la vez.
 - La cuenta faucet es exclusiva (no es staff, admin, treasury ni deployer) y tiene saldo acotado.
 
-## 12. Presets de política de yield (P4 en el front)
-| Preset | `tenant_yield_bps` |
-|---|---|
-| Todo al inquilino | 10000 |
-| 50/50 | 5000 |
-| Todo al casero | 0 |
-| Personalizado | 0–10000 |
+## 12. Reparto del rendimiento por jurisdicción (#16)
+Quién se lleva el rendimiento neto (tras el fee de plataforma) **no lo elige el casero ni el inquilino**: depende de las normas de cada jurisdicción y lo fija el admin en `GlobalConfig.tenant_yield_bps`. La factory lo copia en `Terms.tenant_yield_bps` al crear cada fianza, así que cambiarlo solo afecta a fianzas nuevas, y el escrow y `split()` no cambian.
 
-Los presets **no** afirman qué dice la ley de cada país. La UI lo indica.
+| Jurisdicción | `tenant_yield_bps` | Rendimiento neto |
+|---|---|---|
+| **Portugal (MVP y pitch)** | **0** | todo al casero |
+
+- La fianza (principal) sigue volviendo entera al inquilino, y el fee de plataforma sigue saliendo solo del rendimiento.
+- El front no tiene presets ni selector: lee `terms.tenant_yield_bps` y solo informa de a quién va el rendimiento. **Nunca afirma qué dice la ley.**
+- `deployments/testnet.json` lo refleja en `tenantYieldBps`, y WEB-14 lo comprueba antes de fondear.
