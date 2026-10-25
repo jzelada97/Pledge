@@ -131,7 +131,7 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - Decide: equipo
 
 ## Pendientes en G2 (hora 3)
-- [ ] Base del fork de Trustless Work: v2 `1d22d0c` o v1 `f0b706e` (P1)
+- [x] Base del fork de Trustless Work (P1): v2 `single-release-develop-v2` @ `1d22d0c`. Compila con `soroban-sdk 28.0.0` y nuestro toolchain (Rust 1.99.1, stellar-cli 28.1.0), los 57 tests upstream pasan y el wasm de release pesa 35 910 bytes. No hace falta el plan B (v1).
 - [ ] Vault propio de DeFindex en testnet sobre `USDC_blend_strategy` y cómo fondearlo (P2)
 - [ ] ¿`@trustless-work/escrow-js` acepta nuestra `baseUrl` y los campos extra? (P2)
 - [ ] Base de cálculo de la comisión de protocolo de DeFindex (P2)
