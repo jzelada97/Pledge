@@ -13,6 +13,16 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ---
 
+## 2026-10-25 · Kit de passkeys: smart-account-kit + Relayer propio
+- **Decisión:** `smart-account-kit` **0.8.0** (cuentas de OpenZeppelin con passkey) con `@stellar/stellar-sdk` **16.4.1** (el kit exige `^16.3`). El kit envía `{ func, auth }` a nuestro `/api/relay` (`createRelayHandler` de `@fianzas/wallet/server`), que valida con la `RelayPolicy` y reenvía a OpenZeppelin Channels por HTTP (sin `@openzeppelin/relayer-plugin-channels`, que arrastra otra versión del SDK).
+- **Datos de testnet** (comprobados on-chain el 25-oct-2026, protocolo 29), para `deployments/testnet.json`:
+  - `smartAccount.accountWasmHash`: `1b5f4534a76322da2ad7c745f6900857a6802b0ca79850c35a03561df997785a`
+  - `smartAccount.webauthnVerifier`: `CC7EKIHQP3TN4CARQDND6CEOY2UXLWWC2X5GHTD5NLAT7BG5GPZIOM3F`
+  - Deployer compartido del kit (`RelayPolicy.smartAccountDeployers`): `GAAH4OT36RRCCAGKARGPN2HLHT2NOBVFHO4GUHA6CF7UKQ4MMV24WQ4N`. Solo firma el despliegue; nunca paga.
+- **Descartado:** `passkey-kit` (otro modelo de autorización, no compatible) y el proxy oficial del kit, que solo deja pasar llamadas a la propia cuenta y no a nuestros contratos.
+- **Pendiente del spike en navegador:** crear una cuenta con passkey y firmar `fund_escrow` contra una instancia de la factory (cuando P1 y P2 desplieguen).
+- Decide: P3
+
 ## 2026-10-25 · Escrow propio, sin fork de Trustless Work
 - **Decisión:** el escrow se escribe **desde cero**. No se copia ni se modifica código de Trustless Work. Se mantienen la factory, un contrato por fianza, el vault de DeFindex y todas las firmas de `docs/INTERFACES.md`.
 - **Consecuencias:**
@@ -88,6 +98,6 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ## Pendientes en G2 (hora 3)
 - [ ] Vault de DeFindex en testnet para Fixed USDC y cómo fondearlo (P2)
-- [ ] Kit de passkeys: smart-account-kit o passkey-kit (P3)
+- [x] Kit de passkeys: smart-account-kit (P3)
 - [ ] Anchor: testanchor con SEP-45 o ramp simulado (P3)
 - [ ] Quién asume una pérdida del vault más allá del rendimiento (equipo, antes de G1)
