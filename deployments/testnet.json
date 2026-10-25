@@ -3,10 +3,12 @@
   "network": "testnet",
   "rpcUrl": "https://soroban-testnet.stellar.org",
   "networkPassphrase": "Test SDF Network ; September 2015",
-  "startLedger": 0,
-  "factory": null,
-  "escrowWasmHash": null,
-  "escrowWasmHashesAllowed": [],
+  "startLedger": 5387195,
+  "factory": "CC3QA5DN37DBUFLFFOLXZYXRL4MZ2GAKQ5OTJDG2AQ7DMGRGCKV5W2IL",
+  "escrowWasmHash": "4e841052689ebc56f1a120544fd5f08cbbe106c66c6f33c30ce97bdd014a5b2f",
+  "escrowWasmHashesAllowed": [
+    "4e841052689ebc56f1a120544fd5f08cbbe106c66c6f33c30ce97bdd014a5b2f"
+  ],
   "token": "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU",
   "tokenCode": "USDC",
   "tokenIssuer": "GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56",
@@ -25,15 +27,21 @@
       "assetName": "USDC:GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56",
       "risk": "standard",
       "simulated": false,
-      "default": true
+      "default": true,
+      "maxVaultFeeBps": 200
     },
     {
       "id": "usdc_mock",
       "kind": "defindex",
-      "vault": null,
+      "vault": "CBHM2LC6ERMGRDVTYW4NNX5S2DVZPPYEVPC4AIUM426J5CME6MZCCRYU",
       "risk": "standard",
       "simulated": true,
-      "default": false
+      "default": false,
+      "assetName": "USDC:GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56",
+      "maxVaultFeeBps": 200,
+      "vaultManager": "GBKASLNH25VETEB5MGCLPIX5DG7SY5PLFOBKMIWMTRFJVQNNJAOHXYQ7",
+      "vaultFeeBps": 100,
+      "protocolFeeBps": 2000
     },
     {
       "id": "custody",
@@ -41,7 +49,8 @@
       "vault": null,
       "risk": "noyield",
       "simulated": false,
-      "default": false
+      "default": false,
+      "assetName": "USDC:GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56"
     }
   ],
   "defindex": {
@@ -56,7 +65,9 @@
     "xlm": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
   },
   "admin": "GBKASLNH25VETEB5MGCLPIX5DG7SY5PLFOBKMIWMTRFJVQNNJAOHXYQ7",
-  "staff": ["GAO7MHQHL6LAGUSFGTSDVMISV4UILI33PGOSJEBBR5XB5OXBXKJDR3C2"],
+  "staff": [
+    "GAO7MHQHL6LAGUSFGTSDVMISV4UILI33PGOSJEBBR5XB5OXBXKJDR3C2"
+  ],
   "treasury": "GBNOMT2VMMNGWPENBY2FP66ASRMUVSJRCJZWIZ2ENZ45OYJKSL67L4N7",
   "platformFeeBps": 2000,
   "twFeeBps": 0,
@@ -68,7 +79,9 @@
   "smartAccount": {
     "accountWasmHash": "1b5f4534a76322da2ad7c745f6900857a6802b0ca79850c35a03561df997785a",
     "webauthnVerifier": "CC7EKIHQP3TN4CARQDND6CEOY2UXLWWC2X5GHTD5NLAT7BG5GPZIOM3F",
-    "deployers": ["GAAH4OT36RRCCAGKARGPN2HLHT2NOBVFHO4GUHA6CF7UKQ4MMV24WQ4N"]
+    "deployers": [
+      "GAAH4OT36RRCCAGKARGPN2HLHT2NOBVFHO4GUHA6CF7UKQ4MMV24WQ4N"
+    ]
   },
   "anchor": {
     "mode": "simulated",
@@ -77,5 +90,5 @@
   "demo": {
     "longFianzaId": 0
   },
-  "updatedAt": "2026-10-25T19:45:00Z"
+  "updatedAt": "2026-10-25T20:21:14Z"
 }
