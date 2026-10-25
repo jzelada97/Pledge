@@ -147,7 +147,7 @@ pub struct EscrowView {
 |---|---|---|---|
 | `__constructor(init: EscrowInit)` | — (solo la despliega la factory; ver R-3) | `amount ∈ (0, MAX_AMOUNT]`; `end_ts > now`; bps válidos; `platform_fee_bps + tw_fee_bps ≤ 10000`; exactamente uno de `tenant`/`invite_hash`; `dispute_resolvers` 1–3 sin duplicados; si `tw_fee_bps > 0`, hay `tw_fee_receiver`. Si falla: `panic_with_error!` | — → `Proposed`. `approvals = {target: 2, count: 0, by: []}` |
 | `cancel()` | `terms.landlord` | `Proposed` (BadStatus) | → `Cancelled` |
-| `fund_escrow(tenant: Address, invite_code: Option<BytesN<32>>, expected_terms: Terms) -> i128` (shares) | `tenant` (+ `token.transfer(tenant, escrow, amount)` anidado) | `Proposed`; `now < end_ts` (InvalidEndTs); `expected_terms == terms` (TermsMismatch); invitación (InvalidInvite) o `tenant == fijado` (NotParty); `tenant ≠ landlord` (SameParty); partes (InvalidParty); `factory.funding_allowed(strategy.id)` (Paused); si hay vault: `vault.get_fees()` **≤ snapshot** en las dos componentes (VaultFeeChanged, § 9); transferencia medida `== amount` (InvalidAmount); shares > 0 (VaultError) | `Proposed` → `Active` |
+| `fund_escrow(tenant: Address, invite_code: Option<BytesN<32>>, expected_terms: Terms) -> i128` (shares) | `tenant` (+ `token.transfer(tenant, escrow, amount)` anidado) | `Proposed`; `now < end_ts` (InvalidEndTs); `expected_terms == terms` (TermsMismatch); invitación (InvalidInvite) o `tenant == fijado` (NotParty); `tenant ≠ landlord` (SameParty); partes (InvalidParty); `factory.funding_allowed(strategy.id)` (Paused); si hay vault: `vault.get_fees()` **≤ snapshot** en las dos componentes (VaultFeeChanged, § 9); transferencia medida `== amount` (InvalidAmount); shares > 0 (VaultError). Las llamadas a la factory (`funding_allowed`, `register_tenant`) van con `try_`: si fallan, FactoryCall (security N-1) | `Proposed` → `Active` |
 | `approve_release(approver: Address) -> Option<Settlement>` | `approver` | `approver ∈ {landlord, tenant}` (NotParty); almacenado `Active` (BadStatus); no aprobado ya (AlreadyApproved). Vale antes y después de `end_ts`, y también tras el plazo | `Active` → (al llegar a 2) `Settled`, `Approved` |
 | `stop(reason_hash: BytesN<32>)` | `terms.landlord` (+ `token.transfer(landlord, escrow, stop_bond)` anidado) | `Active` (BadStatus); el casero no aprobó (AlreadyApproved); `now ≤ timeout_at` (DeadlinePassed); `balance(landlord) ≥ stop_bond` (InsufficientBond). **La pausa no lo bloquea** | `Active` → `Stopped` |
 | `assign_expert(resolver: Address, expert_ref: BytesN<32>)` | `resolver` | `resolver ∈ dispute_resolvers` (NotResolver); `Stopped` o `UnderReview` (BadStatus). Al reasignar borra `report_hash` | → `UnderReview` |
@@ -355,8 +355,8 @@ fn get_manager(e: Env) -> Result<Address, ContractError>;   // solo lo usa la fa
   - El resto: ninguna.
   - La raíz debe ser `deployments.factory`, o un escrow con `factory.id_of(addr)` válido.
 - **§ 10 `Wallet`** += `signAndSendBuilt(res: UnsignedTransactionResponse, opts?: { onPhase }) => Promise<{ hash }>`: con `res.soroban` firma las auth entries con la passkey y envía a `/api/fianzas/v1/relay`; sin él (cuenta G) firma el XDR y llama a `/api/stellar/send-transaction` (§ 8.4). `WalletConfig.relayPath = "/api/fianzas/v1/relay"`.
-- **§ 10 `@fianzas/wallet/server`:** nueva `RelayPolicy` (arquitectura § 8.2). La monta `apps/api` (P2) en `/fianzas/v1/relay`, no `apps/web`.
-- **§ 11 (anchor y ramp simulado):** sin cambios.
+- **§ 10 `@fianzas/wallet/server`:** nueva `RelayPolicy` (arquitectura § 8.2, con los topes de security N-3). La monta `apps/api` (P2) en `/fianzas/v1/relay`, no `apps/web`.
+- **§ 11 (anchor y ramp simulado):** sin cambios de interfaz; se añaden las restricciones del ramp simulado.
 - **§ 12 Presets:** `tenant_yield_bps` por **preset de país**. Los presets se quedan en el front y no afirman la ley.
 
 ## 8. API propia compatible con la Core API v2 de Trustless Work (P2) [AD-19]
