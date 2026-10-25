@@ -13,6 +13,16 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ---
 
+## 2026-10-25 · Escrow propio, sin fork de Trustless Work
+- **Decisión:** el escrow se escribe **desde cero**. No se copia ni se modifica código de Trustless Work. Se mantienen la factory, un contrato por fianza, el vault de DeFindex y todas las firmas de `docs/INTERFACES.md`.
+- **Consecuencias:**
+  - No hay `NOTICE` de TW, ni permiso que registrar, ni cabeceras de origen.
+  - Desaparece el fee de TW (`tw_fee_bps`, `tw_fee_receiver`, `Settlement.to_tw`) y `get_roles()`.
+  - El pitch no dice "construido sobre Trustless Work".
+- **Motivo:** evita depender de un permiso sin licencia publicada en un repositorio público, y quita código que no necesitamos (milestones, reparto libre, funciones de admin).
+- **Sustituye a:** "Escrow: fork de Trustless Work + DeFindex + factory" (más abajo).
+- Decide: equipo · Implementa: P1
+
 ## 2026-10-25 · Estrategia de rendimiento: Blend Fixed Pool USDC vía DeFindex
 - **Decisión:** la estrategia por defecto del MVP es el vault de DeFindex sobre el **Blend Fixed Pool USDC**: `usdc_blend_autocompound_fixed_strategy` (`CDB2WMKQ…VZSAP`) en mainnet; en testnet, el equivalente se confirma en el spike. En la UI y el pitch se presenta como "~6-7 %, variable".
 - **Datos** (leídos on-chain en mainnet el 25-oct-2026):
@@ -37,7 +47,7 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - **Regla:** ninguna estrategia se describe como "0 riesgo" ni "sin riesgo".
 - Decide: equipo · Revisa: P2
 
-## 2026-10-25 · Escrow: fork de Trustless Work + DeFindex + factory
+## 2026-10-25 · Escrow: fork de Trustless Work + DeFindex + factory (**sustituida** por "Escrow propio")
 - **Decisión:**
   - El escrow parte del contrato de **Trustless Work** (Single-Release), con su permiso explícito para copiarlo y modificarlo (ver `NOTICE.md`).
   - Lo modificamos para que, al fondear, el dinero vaya a un vault de DeFindex, y para que al liberar o resolver se retire y se reparta.
@@ -77,7 +87,6 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - Decide: equipo
 
 ## Pendientes en G2 (hora 3)
-- [ ] Rama base del fork de Trustless Work (P1)
 - [ ] Vault de DeFindex en testnet para Fixed USDC y cómo fondearlo (P2)
 - [ ] Kit de passkeys: smart-account-kit o passkey-kit (P3)
 - [ ] Anchor: testanchor con SEP-45 o ramp simulado (P3)
