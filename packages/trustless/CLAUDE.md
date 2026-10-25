@@ -4,7 +4,8 @@
 
 ## API de Trustless Work
 - Base: `https://beta.api.trustlesswork.com` (v2). Cabecera `x-api-key: <id.secret>`. La key va en `.env.local` (`TW_API_KEY`), nunca en el repo ni en el navegador: el cliente se usa desde el servidor (`apps/api`).
-- Cada operación devuelve `{ unsignedXdr, txHash }`. Se firma en el cliente **tal cual** (la passkey, `packages/wallet`) y se envía con `POST /stellar/send-transaction`.
+- Cada operación devuelve `{ unsignedXdr, txHash }`: una transacción cuya **cuenta origen es el `signer`**. La firma esa cuenta **tal cual** y se envía con `POST /stellar/send-transaction`, que **no patrocina**: la comisión la paga la cuenta origen.
+- **Ojo con las passkeys:** una cuenta con passkey (`C…`) solo firma *auth entries* de Soroban, no el sobre de una transacción, así que **no puede ser el `signer` de este flujo**. Con la API tal cual, casero e inquilino necesitan cuentas `G…`. Usar passkeys en el plan A depende de que TW acepte direcciones `C…` en los roles y como `signer` (#61) y de patrocinar las comisiones con nuestro Relayer (#62). Ver #60.
 - Errores: Problem Details (`code`, `detail`, `traceId`) → `TrustlessApiError`.
 - Importes en **decimales** (`100.5`): convierte siempre con `units.ts` desde la unidad mínima (7 decimales). Nunca hagas cuentas con `number`.
 
@@ -18,6 +19,7 @@
 TW va a añadir el depósito en DeFindex **sobre esta misma API**. Todo lo que suponemos de esa ampliación vive **solo** en `src/defindex.ts`, detrás de la opción `defindex` del cliente. Cuando TW lo publique, se cambia ese archivo y sus tests; el resto no se toca. Marca cada supuesto con `// SUPUESTO:`.
 
 ## Huecos frente al plan B (no los tapes aquí)
+- Sin passkeys ni comisiones patrocinadas mientras TW no acepte cuentas `C…` (#60, #61, #62). El plan B sí los tiene.
 - Sin stop bond ni perito pagado por el bond.
 - Sin timeout del casero ni de revisión: el inquilino no puede reclamar solo.
 - Roles fijados al desplegar: el escrow se despliega cuando el inquilino acepta la invitación (hace falta su dirección).
