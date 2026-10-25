@@ -17,11 +17,7 @@ use soroban_sdk::{
 
 const SECONDS_PER_YEAR: i128 = 31_536_000;
 
-/// Retorno de `deposit`, con la forma exacta de DeFindex: `(amounts, shares, asset_allocations)`.
-/// Comprobado simulando `deposit` contra el vault propio de testnet. El mock devuelve `None` en
-/// las asignaciones porque no tiene estrategias.
-pub type DepositResult = (Vec<i128>, i128, Option<Vec<AssetInvestmentAllocation>>);
-
+/// Asignaciones que devuelve `deposit` de DeFindex (tercer elemento del retorno).
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StrategyAllocation {
@@ -154,15 +150,19 @@ impl MockVault {
 
     // ---- Interfaz de DeFindex que usa el escrow ----
 
-    /// Igual que DeFindex: `(amounts_depositados, shares_emitidas, allocations)`. El escrow ignora el
-    /// retorno y mide las shares con `balance(escrow)` antes y después.
+    /// Igual que DeFindex: `(amounts_depositados, shares_emitidas, allocations)`, comprobado
+    /// simulando `deposit` contra el vault propio de testnet. El mock devuelve `None` en las
+    /// asignaciones porque no tiene estrategias. El escrow ignora el retorno y mide las shares con
+    /// `balance(escrow)` antes y después.
+    /// La tupla va en línea: un alias de tipo no entra en la spec del contrato y rompe los bindings.
+    #[allow(clippy::type_complexity)]
     pub fn deposit(
         e: Env,
         amounts_desired: Vec<i128>,
         amounts_min: Vec<i128>,
         from: Address,
         _invest: bool,
-    ) -> Result<DepositResult, MockVaultError> {
+    ) -> Result<(Vec<i128>, i128, Option<Vec<AssetInvestmentAllocation>>), MockVaultError> {
         from.require_auth();
         fail(&e)?;
         if amounts_desired.len() != 1 || amounts_min.len() != 1 {
