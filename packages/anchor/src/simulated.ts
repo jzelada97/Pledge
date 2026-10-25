@@ -4,7 +4,7 @@ import { isValidAmount } from "./amount";
 import { AnchorError, type Anchor, type AnchorStatus } from "./types";
 
 export interface SimulatedAnchorConfig {
-  rampUrl: string; // normalmente "/api/ramp" (createSimRampHandler)
+  rampPath: string; // "/api/fianzas/v1/ramp" (createSimRampHandler montado en apps/api)
   fetch?: typeof fetch;
 }
 
@@ -24,7 +24,7 @@ export function createSimulatedAnchor(cfg: SimulatedAnchorConfig): Anchor {
       if (!amount || !isValidAmount(amount)) throw new AnchorError("INVALID_AMOUNT");
       let res: Response;
       try {
-        res = await doFetch(cfg.rampUrl, {
+        res = await doFetch(cfg.rampPath, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ to: address, amount }),
@@ -44,7 +44,7 @@ export function createSimulatedAnchor(cfg: SimulatedAnchorConfig): Anchor {
 
     async status(id): Promise<AnchorStatus> {
       try {
-        const res = await doFetch(`${cfg.rampUrl}?id=${encodeURIComponent(id)}`);
+        const res = await doFetch(`${cfg.rampPath}?id=${encodeURIComponent(id)}`);
         if (!res.ok) return "error";
         return ((await res.json()) as { status: AnchorStatus }).status;
       } catch {

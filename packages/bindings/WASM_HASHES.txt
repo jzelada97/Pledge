@@ -1,0 +1,4 @@
+# Generado por scripts/bindings.sh. wasm → sha256 (= hash que instala stellar contract upload).
+4e841052689ebc56f1a120544fd5f08cbbe106c66c6f33c30ce97bdd014a5b2f  escrow.wasm
+695c0551ea56c44373c482654c9973caf37e7eb50bd1c08aa9f6db0a121f9bba  factory.wasm
+109c28004a64a9a794965d76838698113d316c0a7c87a0fafee2a94aac326970  mock_vault.wasm

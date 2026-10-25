@@ -1,0 +1,15 @@
+[package]
+name = "mock-vault"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+# Versiones y perfiles en el Cargo.toml raíz del workspace (área deps, P2).
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

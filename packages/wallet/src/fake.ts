@@ -80,6 +80,10 @@ export class FakeWallet implements Wallet {
     return { hash: randomHash() };
   }
 
+  async signAndSendBuilt(_res: unknown, opts: SignAndSendOptions = {}): Promise<{ hash: string }> {
+    return this.signAndSend(_res, opts);
+  }
+
   async disconnect(): Promise<void> {
     this.address = null;
   }
