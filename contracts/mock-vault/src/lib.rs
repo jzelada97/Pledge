@@ -18,7 +18,24 @@ use soroban_sdk::{
 const SECONDS_PER_YEAR: i128 = 31_536_000;
 
 /// Retorno de `deposit`, con la forma exacta de DeFindex: `(amounts, shares, asset_allocations)`.
-pub type DepositResult = (Vec<i128>, i128, Option<Vec<Option<i128>>>);
+/// Comprobado simulando `deposit` contra el vault propio de testnet. El mock devuelve `None` en
+/// las asignaciones porque no tiene estrategias.
+pub type DepositResult = (Vec<i128>, i128, Option<Vec<AssetInvestmentAllocation>>);
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StrategyAllocation {
+    pub amount: i128,
+    pub paused: bool,
+    pub strategy_address: Address,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AssetInvestmentAllocation {
+    pub asset: Address,
+    pub strategy_allocations: Vec<Option<StrategyAllocation>>,
+}
 const BPS: i128 = 10_000;
 const DAY: u32 = 17_280;
 const TTL_THRESHOLD: u32 = DAY * 7;
