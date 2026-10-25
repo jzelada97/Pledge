@@ -348,7 +348,7 @@ fn get_manager(e: Env) -> Result<Address, ContractError>;   // solo lo usa la fa
 
 ## 7. Paquetes TS: cambios respecto a la versión anterior
 
-- **§ 10 `packages/wallet`:** la interfaz `Wallet`, `WalletError`, `SignPhase`, `createWallet` y `FakeWallet` no cambian. Se mantienen los añadidos de security: `AUTH_MISMATCH`, `signatureExpirationLedger ≤ latest + 60` y `location.hostname === rpId`. **WEB-3** espera estas subinvocaciones:
+- **§ 10 `packages/wallet`:** `Wallet`, `WalletError`, `SignPhase`, `createWallet` y `FakeWallet` según § 10. Se mantienen los añadidos de security: `AUTH_MISMATCH`, `signatureExpirationLedger ≤ latest + 60` y `location.hostname === rpId`. **WEB-3** espera estas subinvocaciones:
   - `factory.create_fianza`: ninguna.
   - `escrow.fund_escrow`: solo `token.transfer(tenant, escrow, terms.amount)`.
   - `escrow.stop`: solo `token.transfer(landlord, escrow, terms.stop_bond)`.
@@ -581,19 +581,42 @@ Verificado en `paltalabs/defindex/apps/contracts/vault/src/lib.rs`: el vault exp
 - [M] Política de gobernanza del multisig: no subir `vault_fee` de un vault con fianzas activas, o hacerlo con un preaviso y un timelock publicados. Monitor de `get_fees()` que avise si cambia.
 
 ## 10. `packages/wallet` (P3)
-```ts
-export interface Wallet {
-  createAccount(displayName: string): Promise<{ address: string }>; // passkey nueva → C-address
-  connect(): Promise<{ address: string } | null>;                    // reconexión silenciosa
-  signAndSend(tx: AssembledTransaction<unknown>): Promise<{ hash: string }>; // fees vía Relayer
-  disconnect(): Promise<void>;
-}
-```
+
+Cuenta inteligente con passkey (`smart-account-kit` 0.8.0, cuentas de OpenZeppelin) y fees patrocinados por OpenZeppelin Channels. Implementación: `packages/wallet/src`.
 
 ```ts
-export type WalletErrorCode =        // lista mínima; P3 la cierra en G1. P4 traduce cada código
+import { createWallet, FakeWallet, WalletError } from "@fianzas/wallet";
+
+export type SignPhase = "verifying" | "signing" | "submitting";
+export interface SignAndSendOptions {
+  onPhase?: (phase: SignPhase) => void;
+  expectedTransferAmount?: bigint;   // obligatorio en `stop`: terms.stop_bond (para WEB-3)
+}
+
+export interface Wallet {
+  createAccount(displayName: string): Promise<{ address: string }>; // passkey nueva → C-address (despliegue patrocinado)
+  connect(): Promise<{ address: string } | null>;                    // reconexión silenciosa (sesión en IndexedDB)
+  signAndSend(tx: AssembledTransaction<unknown>, opts?: SignAndSendOptions): Promise<{ hash: string }>; // fees vía Relayer
+  disconnect(): Promise<void>;
+}
+
+export interface WalletConfig {
+  rpcUrl: string; networkPassphrase: string;
+  rpId: string;                     // hostname exacto del despliegue (AUTH-6)
+  rpName: string;                   // nombre que ve el usuario al crear la passkey
+  accountWasmHash: string;          // deployments.smartAccount.accountWasmHash
+  webauthnVerifierAddress: string;  // deployments.smartAccount.webauthnVerifier
+  relayerUrl: string;               // "/api/relay"
+  factory: string; token: string;   // deployments.factory, deployments.token
+  isRegisteredEscrow(addr: string): Promise<boolean>; // factory.id_of(addr) no da NotFound
+}
+export function createWallet(cfg: WalletConfig): Wallet; // lanza WRONG_ORIGIN si location.hostname !== rpId
+export class FakeWallet implements Wallet { constructor(delayMs?: number); failNext(code: WalletErrorCode): void }
+
+export type WalletErrorCode =        // P4 traduce cada código
   | "USER_CANCELLED"      // el usuario cerró el diálogo de la passkey
   | "WRONG_ORIGIN"        // location.hostname !== cfg.rpId (AUTH-6)
+  | "NOT_CONNECTED"       // se pidió firmar sin cuenta conectada
   | "SIMULATION_FAILED"   // la simulación devolvió un error del contrato (lleva contractError)
   | "AUTH_MISMATCH"       // el árbol de auth no es el esperado: no se firma (WEB-3)
   | "RELAYER_DOWN"        // /api/relay o Channels no responden
@@ -604,8 +627,9 @@ export class WalletError extends Error { code: WalletErrorCode; contractError?: 
 ```
 
 Reglas de `signAndSend` (security WEB-3 v2, AUTH-5):
-- Antes de pedir la passkey decodifica las auth entries de la C-address. La raíz debe ser `deployments.factory` o un escrow con `factory.id_of(addr)` válido. Las subinvocaciones deben ser **exactamente** las del § 7. Si no, `AUTH_MISMATCH` y no se firma.
-- `signatureExpirationLedger ≤ latestLedger + 60`.
+- Antes de pedir la passkey decodifica las auth entries de la C-address. La raíz debe ser `deployments.factory` o un escrow con `factory.id_of(addr)` válido, con una función de la lista del Relayer. Las subinvocaciones deben ser **exactamente** las del § 7: en `fund_escrow`, el importe sale de `expected_terms.amount`; en `stop`, de `opts.expectedTransferAmount`. Si no, `AUTH_MISMATCH` y no se firma.
+- Los *claims* no llevan firma. Ninguna entrada puede tener credenciales `SOURCE_ACCOUNT`.
+- `signatureExpirationLedger = latestLedger + 60`.
 
 **`@fianzas/wallet/server` (solo servidor, `import "server-only"`):**
 ```ts
@@ -616,32 +640,61 @@ export interface RelayPolicy {
     factory: string;                          // la instancia debe estar registrada aquí
     functions: string[];                      // ["cancel","fund_escrow","approve_release","stop","claim_after_timeout","claim_after_review_timeout"]
   };
-  createContractWasmHashes: string[];         // solo smart accounts
+  token: string;                              // única subinvocación: token.transfer del propio firmante
+  createContractWasmHashes: string[];         // solo smart accounts (también: los firmantes deben ser cuentas de este wasm)
+  smartAccountDeployers: string[];            // deployer compartido de smart-account-kit
+  allowedOrigins: string[];                   // orígenes de apps/web
+  maxResourceFeeStroops: bigint;              // tope de fee por transacción, p. ej. 1_000_000n
   maxRequestsPerMinutePerIp: number;          // 30
   maxRequestsPerMinutePerCredential: number;  // 10
   maxCreateFianzaPerHourPerCredential: number; // 5 (N-3)
   globalHourlyCap: number;                    // tope por instancia, p. ej. 600
 }
-export function createRelayHandler(cfg: { policy: RelayPolicy; relayerUrl: string; apiKey: string; rpcUrl: string }): (req: Request) => Promise<Response>;
+export function createRelayHandler(cfg: {
+  policy: RelayPolicy; relayerUrl: string; apiKey: string; rpcUrl: string; networkPassphrase: string;
+}): (req: Request) => Promise<Response>;      // app/api/relay/route.ts: export const POST = createRelayHandler({ … })
 ```
+- Recibe lo que envía el kit: `{ func, auth }` en base64, sin campos extra. Lo reenvía a Channels como `{ params: { func, auth } }` con `Authorization: Bearer <RELAYER_API_KEY>`.
 - Un escrow que no está en `fixedContracts` solo pasa si **las dos** comprobaciones dan bien: su ejecutable (`getLedgerEntries`) es un wasm de `escrow.wasmHashes` y `factory.id_of(addr)` devuelve un id. El resultado se cachea por dirección.
-- Rechaza credenciales `SOURCE_ACCOUNT`, raíces que no coinciden byte a byte con `func`, más de 4 auth entries, cuerpos de más de 64 KB y `Origin` ajeno (SRV-3, SRV-4, IV-5, CS-3). `assign_expert`, `record_report`, `resolve` y las funciones de admin **nunca** pasan por el Relayer.
-- Las respuestas solo llevan `{ code }` (SRV-8).
+- El despliegue de una cuenta (`createContractV2`) solo pasa con un wasm de `createContractWasmHashes` y un deployer de `smartAccountDeployers`, con una sola auth entry idéntica a la función.
+- Rechaza credenciales `SOURCE_ACCOUNT`, raíces que no coinciden byte a byte con `func`, más de 4 auth entries, cuerpos de más de 64 KB, `Content-Type` distinto de JSON y `Origin` ajeno (SRV-3, SRV-4, IV-5, CS-3). Simula antes de enviar: si falla, `SIMULATION_FAILED`; si el fee supera el tope, `FEE_TOO_HIGH`. `assign_expert`, `record_report`, `resolve` y las funciones de admin **nunca** pasan por el Relayer.
+- Respuestas: `{ success: true, data: { transactionId, hash, status } }` o `{ success: false, error: <CODE>, code: <CODE> }`, sin detalles del Relayer (SRV-8).
 
 ## 11. `packages/anchor` (P3)
+Implementación: `packages/anchor/src`. En la hackatón se usa el **ramp simulado** ([AD-8]); el anchor SEP-24 real queda para después (las cuentas con passkey necesitan SEP-45, que sigue en Draft).
+
 ```ts
+import { createSimulatedAnchor, FakeAnchor, AnchorError } from "@fianzas/anchor";
+
 export interface Anchor {
-  startDeposit(address: string, assetCode: string): Promise<{ url: string; id: string }>;   // URL interactiva SEP-24
-  startWithdraw(address: string, assetCode: string): Promise<{ url: string; id: string }>;
+  // amount en unidades del token ("12.5"): lo usa el ramp simulado; en SEP-24 lo pide el anchor
+  startDeposit(address: string, assetCode: string, amount?: string): Promise<{ url: string; id: string }>; // url "" si es simulado
+  startWithdraw(address: string, assetCode: string, amount?: string): Promise<{ url: string; id: string }>; // simulado: NOT_SUPPORTED
   status(id: string): Promise<"pending" | "completed" | "error">;
   isSimulated: boolean; // true en el plan B: la UI lo muestra
 }
+export function createSimulatedAnchor(cfg: { rampUrl: string }): Anchor; // rampUrl: "/api/ramp"
+export class FakeAnchor implements Anchor { constructor(delayMs?: number) }
+export class AnchorError extends Error { code: "NOT_SUPPORTED" | "INVALID_AMOUNT" | "RATE_LIMITED" | "DISABLED" | "RAMP_DOWN" }
 ```
 
 **Ramp simulado (`@fianzas/anchor/server`, plan B)** (security SRV-10…SRV-15):
+```ts
+export function createSimRampHandler(cfg: {
+  networkPassphrase: string; rpcUrl: string;
+  faucetSecret: string;         // RAMP_FAUCET_SECRET
+  token: string;                // deployments.token
+  accountWasmHashes: string[];  // [deployments.smartAccount.accountWasmHash]
+  enabled: boolean;             // RAMP_ENABLED
+  allowedOrigins: string[];
+  maxAmount: string; perAddressCap: string; perIpPerHour: number; globalHourlyCap: number;
+}): { POST: (req: Request) => Promise<Response>; GET: (req: Request) => Promise<Response> };
+// app/api/ramp/route.ts: export const { POST, GET } = createSimRampHandler({ … })
+```
+- `POST { to, amount }` → `{ id, status: "completed" }` cuando la transferencia se confirma. `GET ?id=` → `{ status }`, solo de ids emitidos por esa instancia.
 - `createSimRampHandler` lanza una excepción al construirse con la *passphrase* de mainnet.
 - Solo envía a C-address que sean smart accounts nuestros (ejecutable = `smartAccount.accountWasmHash`).
-- `amount` validado con `^\d{1,6}(\.\d{1,7})?$` y convertido con `BigInt`. Topes por petición, por dirección, por IP y global por hora. Con `RAMP_ENABLED=0` responde `403`.
+- `amount` validado con `^\d{1,6}(\.\d{1,7})?$` y convertido con `BigInt`. Topes por petición, por dirección, por IP y global por hora. Con `RAMP_ENABLED=0` responde `403`. Una transacción de la faucet a la vez.
 - La cuenta faucet es exclusiva (no es staff, admin, treasury ni deployer) y tiene saldo acotado.
 
 ## 12. Presets de política de yield (P4 en el front)
