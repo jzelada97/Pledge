@@ -30,6 +30,12 @@ const fakeChain: Chain = {
     if (fn === "config_version") return 7 as never;
     throw new Error(`lectura inesperada ${contractId}.${fn}`);
   },
+  async readRaw(contractId, fn) {
+    throw new Error(`lectura inesperada ${contractId}.${fn}`);
+  },
+  async build(contractId, fn) {
+    throw new Error(`build inesperado ${contractId}.${fn}`);
+  },
   async send() {
     return { txHash: "ab".repeat(32), ledger: 123, status: "SUCCESS" };
   },
