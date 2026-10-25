@@ -13,6 +13,9 @@ importers:
       '@fianzas/anchor':
         specifier: workspace:*
         version: link:../../packages/anchor
+      '@fianzas/bindings':
+        specifier: workspace:*
+        version: link:../../packages/bindings
       '@fianzas/wallet':
         specifier: workspace:*
         version: link:../../packages/wallet

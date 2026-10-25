@@ -1,10 +1,44 @@
-// Acceso a la cadena: lecturas por simulación (sin firma, con readSource como origen) y envío de
-// transacciones ya firmadas. La cadena es la fuente de verdad; la caché solo ahorra RPC.
-import { BASE_FEE, Contract, TransactionBuilder, rpc, scValToNative, xdr } from "@stellar/stellar-sdk";
+// Acceso a la cadena: lecturas por simulación (sin firma, con readSource como origen), builds sin
+// firmar (INTERFACES § 8, UnsignedTransactionResponse) y envío de transacciones ya firmadas.
+// La cadena es la fuente de verdad; la caché solo ahorra RPC.
+import {
+  BASE_FEE,
+  Contract,
+  StrKey,
+  TransactionBuilder,
+  rpc,
+  scValToNative,
+  xdr,
+  type Operation,
+} from "@stellar/stellar-sdk";
 import type { ApiConfig } from "./config";
-import { Problem } from "./problem";
+import { Problem, validationError } from "./problem";
 
 export const STROOPS = 10_000_000n;
+// Ventana de validez de las auth entries de una passkey (security AUTH-5): ~5 minutos.
+export const SIGNATURE_LEDGERS = 60;
+
+export interface UnsignedTransactionResponse {
+  unsignedXdr: string;
+  txHash: string;
+  contractId?: string | null;
+  soroban?: { func: string; auth: string[]; validUntilLedger: number };
+}
+
+// Lo que devuelve build(): la respuesta pública más el retorno simulado, que algunas rutas
+// necesitan (approve-and-release comprueba si la aprobación liquida).
+export interface Built extends UnsignedTransactionResponse {
+  result: unknown;
+}
+
+function simulationProblem(error: string, contractId: string, fn: string): Problem {
+  const m = /Error\(Contract, #(\d+)\)/.exec(error);
+  return new Problem(502, "STELLAR_SIMULATION_FAILED", "La simulación falló", error.slice(0, 500), {
+    contractId,
+    fn,
+    ...(m ? { contractError: Number(m[1]) } : {}),
+  });
+}
 
 export function toDecimal(stroops: bigint | string | number, decimals = 7): string {
   const v = BigInt(stroops);
@@ -33,6 +67,10 @@ export class TtlCache {
 
 export interface Chain {
   read<T = unknown>(contractId: string, fn: string, args?: xdr.ScVal[]): Promise<T>;
+  // Igual que read pero sin decodificar: para reenviar un valor de la cadena tal cual (expected_terms).
+  readRaw(contractId: string, fn: string, args?: xdr.ScVal[]): Promise<xdr.ScVal>;
+  // Prepara (simula y ensambla) una invocación para que `signer` la firme. La API nunca firma.
+  build(contractId: string, fn: string, args: xdr.ScVal[], signer: string): Promise<Built>;
   send(signedXdr: string): Promise<{ txHash: string; ledger: number | null; status: string }>;
   latestLedger(): Promise<number>;
 }
@@ -40,26 +78,66 @@ export interface Chain {
 export function createChain(cfg: ApiConfig): Chain {
   const server = new rpc.Server(cfg.rpcUrl, { allowHttp: cfg.rpcUrl.startsWith("http://") });
 
+  async function simulateRead(contractId: string, fn: string, args: xdr.ScVal[]): Promise<xdr.ScVal> {
+    const source = await server.getAccount(cfg.readSource);
+    const tx = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase: cfg.networkPassphrase })
+      .addOperation(new Contract(contractId).call(fn, ...args))
+      .setTimeout(30)
+      .build();
+    const sim = await server.simulateTransaction(tx);
+    if (rpc.Api.isSimulationError(sim)) throw simulationProblem(sim.error, contractId, fn);
+    if (!rpc.Api.isSimulationSuccess(sim) || !sim.result) {
+      throw new Problem(502, "STELLAR_SIMULATION_FAILED", "La simulación no devolvió resultado", undefined, { contractId, fn });
+    }
+    return sim.result.retval;
+  }
+
   return {
     async read<T>(contractId: string, fn: string, args: xdr.ScVal[] = []): Promise<T> {
-      const source = await server.getAccount(cfg.readSource);
+      return scValToNative(await simulateRead(contractId, fn, args)) as T;
+    },
+
+    readRaw(contractId: string, fn: string, args: xdr.ScVal[] = []) {
+      return simulateRead(contractId, fn, args);
+    },
+
+    async build(contractId: string, fn: string, args: xdr.ScVal[], signer: string): Promise<Built> {
+      const isContract = StrKey.isValidContract(signer);
+      if (!isContract && !StrKey.isValidEd25519PublicKey(signer)) {
+        throw validationError("signer debe ser una dirección G… o C…");
+      }
+      // Cuenta G: es el origen y firma la tx entera. C-address (passkey): el origen es readSource
+      // y el XDR es solo informativo; lo que se firma son las auth entries (INTERFACES § 8.4).
+      let source;
+      try {
+        source = await server.getAccount(isContract ? cfg.readSource : signer);
+      } catch {
+        throw new Problem(422, "STELLAR_ACCOUNT_NOT_FOUND", "La cuenta firmante no existe en la red", "Hay que fondearla con XLM antes de firmar", { signer });
+      }
       const tx = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase: cfg.networkPassphrase })
         .addOperation(new Contract(contractId).call(fn, ...args))
-        .setTimeout(30)
+        .setTimeout(SIGNATURE_LEDGERS * 5)
         .build();
       const sim = await server.simulateTransaction(tx);
-      if (rpc.Api.isSimulationError(sim)) {
-        const m = /Error\(Contract, #(\d+)\)/.exec(sim.error);
-        throw new Problem(502, "STELLAR_SIMULATION_FAILED", "La simulación falló", sim.error.slice(0, 500), {
-          contractId,
-          fn,
-          ...(m ? { contractError: Number(m[1]) } : {}),
-        });
+      if (rpc.Api.isSimulationError(sim)) throw simulationProblem(sim.error, contractId, fn);
+      if (rpc.Api.isSimulationRestore(sim)) {
+        throw new Problem(409, "STELLAR_STATE_ARCHIVED", "El estado del contrato está archivado", "Hay que restaurarlo antes de operar", { contractId });
       }
-      if (!rpc.Api.isSimulationSuccess(sim) || !sim.result) {
-        throw new Problem(502, "STELLAR_SIMULATION_FAILED", "La simulación no devolvió resultado", undefined, { contractId, fn });
+      const prepared = rpc.assembleTransaction(tx, sim).build();
+      const built: Built = {
+        unsignedXdr: prepared.toXDR(),
+        txHash: prepared.hash().toString("hex"),
+        result: sim.result ? scValToNative(sim.result.retval) : undefined,
+      };
+      if (isContract) {
+        const op = tx.operations[0] as Operation.InvokeHostFunction;
+        built.soroban = {
+          func: op.func.toXDR("base64"),
+          auth: (sim.result?.auth ?? []).map((a) => a.toXDR("base64")),
+          validUntilLedger: sim.latestLedger + SIGNATURE_LEDGERS,
+        };
       }
-      return scValToNative(sim.result.retval) as T;
+      return built;
     },
 
     async send(signedXdr: string) {

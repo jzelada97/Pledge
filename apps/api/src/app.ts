@@ -48,7 +48,7 @@ export function createApp(cfg: ApiConfig, deps: AppDeps = {}) {
 
   app.route("/", stellarRoutes(chain));
   app.route("/", fianzasRoutes(cfg, chain, cache));
-  app.route("/", twRoutes());
+  app.route("/", twRoutes(cfg, chain, cache));
 
   // Relayer: único camino patrocinado, solo para C-addresses con passkey (arquitectura § 6.8.4).
   if (cfg.relayer) {
