@@ -5,7 +5,7 @@ import { createSimulatedAnchor } from "./simulated";
 describe("createSimulatedAnchor", () => {
   it("llama a /api/ramp y traduce los errores", async () => {
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ id: "h1", status: "completed" }));
-    const anchor = createSimulatedAnchor({ rampUrl: "/api/ramp", fetch: fetchMock as unknown as typeof fetch });
+    const anchor = createSimulatedAnchor({ rampPath: "/api/fianzas/v1/ramp", fetch: fetchMock as unknown as typeof fetch });
     expect(anchor.isSimulated).toBe(true);
     expect(await anchor.startDeposit("CABC", "USDC", "10")).toEqual({ url: "", id: "h1" });
     expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ to: "CABC", amount: "10" });
