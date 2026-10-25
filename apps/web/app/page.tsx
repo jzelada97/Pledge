@@ -32,7 +32,7 @@ export default function Home() {
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <BuildingIcon className="size-6 text-primary" aria-hidden />
+                <BuildingIcon className="size-6 text-muted-foreground" aria-hidden />
                 <CardTitle className="text-xl">I&apos;m a landlord</CardTitle>
                 <CardDescription>Create deposits, send invitations and approve releases.</CardDescription>
               </CardHeader>
@@ -47,7 +47,7 @@ export default function Home() {
             </Card>
             <Card>
               <CardHeader>
-                <KeyRoundIcon className="size-6 text-primary" aria-hidden />
+                <KeyRoundIcon className="size-6 text-muted-foreground" aria-hidden />
                 <CardTitle className="text-xl">I&apos;m a tenant</CardTitle>
                 <CardDescription>Pay your deposit from your bank and see when it comes back.</CardDescription>
               </CardHeader>
@@ -75,7 +75,7 @@ export default function Home() {
               <li key={p.title}>
                 <Card className="h-full">
                   <CardContent className="space-y-2">
-                    <p.icon className="size-5 text-primary" aria-hidden />
+                    <p.icon className="size-5 text-muted-foreground" aria-hidden />
                     <h3 className="font-semibold">{p.title}</h3>
                     <p className="text-sm text-muted-foreground">{p.body}</p>
                   </CardContent>

@@ -54,14 +54,14 @@ export default async function LandlordDashboard({ searchParams }: PageProps<"/la
         <div className="flex flex-col gap-10">
           {/* Stats: one tinted panel, so they don't read as deposit cards */}
           <section aria-labelledby="overview-title" className="space-y-3">
-            <h2 id="overview-title" className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+            <h2 id="overview-title" className="text-sm font-semibold text-muted-foreground">
               Overview
             </h2>
             <dl className="grid divide-y divide-accent-foreground/15 rounded-xl bg-accent text-accent-foreground sm:grid-cols-3 sm:divide-x sm:divide-y-0">
               {stats.map((s) => (
                 <div key={s.label} className="space-y-1 p-6">
                   <dt className="flex items-center gap-2 text-sm font-medium">
-                    <s.icon className="size-4 text-primary" aria-hidden />
+                    <s.icon className="size-4 text-accent-foreground" aria-hidden />
                     {s.label}
                   </dt>
                   <dd className="text-3xl font-semibold tracking-tight tabular-nums">{s.value}</dd>
@@ -91,7 +91,7 @@ export default async function LandlordDashboard({ searchParams }: PageProps<"/la
                     aria-label={`Deposit #${d.id}, ${money(d.data.terms.amount)}, ${STATUS_LABEL[d.status]}`}
                     className="group block h-full rounded-xl focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                   >
-                    <Card className="h-full transition-colors group-hover:border-primary/40 group-hover:bg-accent/40">
+                    <Card className="h-full transition-colors group-hover:border-primary/40 group-hover:bg-muted">
                       <CardHeader>
                         <div className="flex items-start justify-between gap-2">
                           <CardDescription>Deposit #{d.id.toString()}</CardDescription>

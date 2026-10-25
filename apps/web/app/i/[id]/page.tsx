@@ -42,7 +42,6 @@ export default async function Invitation({ params, searchParams }: PageProps<"/i
   return (
     <TenantShell>
       <header className="space-y-2">
-        <p className="text-sm font-medium text-primary">Invitation from your landlord</p>
         <h1 className="text-3xl font-semibold tracking-tight">Your room deposit</h1>
         <p className="text-lg text-muted-foreground">
           {money(terms.amount)}, back to you in full when you and your landlord approve.
