@@ -1,4 +1,4 @@
-import { Address } from "@stellar/stellar-sdk";
+import { Address, nativeToScVal } from "@stellar/stellar-sdk";
 import { describe, expect, it } from "vitest";
 import { verifyAuthTree } from "./auth-check";
 import { WalletError } from "./errors";
@@ -63,6 +63,40 @@ describe("verifyAuthTree", () => {
     await expectMismatch(verifyAuthTree({ func: hostFn(args), auth }, landlord, cfg));
     await expect(verifyAuthTree({ func: hostFn(args), auth }, landlord, cfg, { expectedTransferAmount: bond })).resolves.toBe(auth[0]);
     await expectMismatch(verifyAuthTree({ func: hostFn(args), auth }, landlord, cfg, { expectedTransferAmount: bond + 1n }));
+  });
+
+  describe("escrows de Trustless Work (plan A)", () => {
+    const tw = randomContract();
+    const feeAddress = randomContract();
+    const twCfg: ContractsConfig = { ...cfg, trustless: { isEscrow: async (a) => a === tw, feeAddress } };
+    const twFund = (amount: bigint) =>
+      invoke(tw, "fund_escrow", [new Address(tenant).toScVal(), terms(1n), nativeToScVal(amount, { type: "i128" })]);
+
+    it("acepta fund_escrow con la transferencia exacta del tercer argumento", async () => {
+      const args = twFund(AMOUNT);
+      const auth = [entry(tenant, call(args, [transfer(token, tenant, tw, AMOUNT)]))];
+      await expect(verifyAuthTree({ func: hostFn(args), auth }, tenant, twCfg)).resolves.toBe(auth[0]);
+      await expectMismatch(
+        verifyAuthTree({ func: hostFn(args), auth: [entry(tenant, call(args, [transfer(token, tenant, tw, AMOUNT + 1n)]))] }, tenant, twCfg),
+      );
+    });
+
+    it("release_funds solo con la dirección de comisión configurada", async () => {
+      const ok = invoke(tw, "release_funds", [new Address(tenant).toScVal(), new Address(feeAddress).toScVal()]);
+      await expect(verifyAuthTree({ func: hostFn(ok), auth: [entry(tenant, call(ok))] }, tenant, twCfg)).resolves.toBeTruthy();
+      const evil = invoke(tw, "release_funds", [new Address(tenant).toScVal(), new Address(randomContract()).toScVal()]);
+      await expectMismatch(verifyAuthTree({ func: hostFn(evil), auth: [entry(tenant, call(evil))] }, tenant, twCfg));
+    });
+
+    it("rechaza escrows de TW no reconocidos, funciones de staff y TW sin configurar", async () => {
+      const resolve = invoke(tw, "resolve_dispute", []);
+      await expectMismatch(verifyAuthTree({ func: hostFn(resolve), auth: [entry(tenant, call(resolve))] }, tenant, twCfg));
+      const other = invoke(randomContract(), "approve_milestone", []);
+      await expectMismatch(verifyAuthTree({ func: hostFn(other), auth: [entry(tenant, call(other))] }, tenant, twCfg));
+      const approve = invoke(tw, "approve_milestone", []);
+      await expect(verifyAuthTree({ func: hostFn(approve), auth: [entry(tenant, call(approve))] }, tenant, twCfg)).resolves.toBeTruthy();
+      await expectMismatch(verifyAuthTree({ func: hostFn(approve), auth: [entry(tenant, call(approve))] }, tenant, cfg));
+    });
   });
 
   it("los claims no necesitan firma y create_fianza no admite subinvocaciones", async () => {
