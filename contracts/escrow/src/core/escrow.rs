@@ -1,258 +1,195 @@
 // Derived from Trustless-Work/trustlesswork-smart-contract-stellar@1d22d0c (contracts/escrow/src/core/escrow.rs), modified. See contracts/escrow/NOTICE.md
-use soroban_sdk::token::Client as TokenClient;
-use soroban_sdk::{Address, Env, Symbol, Vec};
-
-use crate::core::validators::escrow::{
-    validate_escrow_property_change_conditions, validate_fund_escrow_conditions,
-    validate_initialize_escrow_conditions, validate_manage_milestones_conditions,
-    validate_release_conditions,
+// FIANZAS: `initialize_escrow` pasa a `init_from_constructor` (inicialización atómica en el
+// despliegue) y `fund_escrow` pasa a un único fondeo del inquilino por el importe exacto, con
+// invitación y `expected_terms`. Se eliminan `change_escrow_properties`, `manage_milestones`,
+// `get_multiple_escrow_balances` y `get_escrow_by_contract_id` (pasan a la factory).
+// `release_funds_execute` se moverá a `core/settle.rs`.
+use soroban_sdk::{
+    token::Client as TokenClient, vec, Address, Bytes, BytesN, Env, IntoVal, Symbol, Val,
 };
+
+use crate::core::validators::escrow::{validate_init, validate_parties};
 use crate::error::EscrowError;
-use crate::modules::fee::{FeeCalculator, FeeCalculatorTrait, StandardFeeResult};
-use crate::modules::math::{BasicArithmetic, BasicMath};
-use crate::storage::types::{AddressBalance, DataKey, Escrow, Milestone, MilestoneUpdate};
+use crate::storage::types::{
+    Approvals, DataKey, Dispute, Escrow, EscrowInit, SettlePath, Settlement, Status, StrategyKind,
+    Terms,
+};
+
+// FIANZAS: storage persistent (security N-21) con TTL renovado en cada escritura.
+const TTL_THRESHOLD: u32 = 17_280; // ~1 día de ledgers
 
 pub struct EscrowManager;
 
 impl EscrowManager {
-    #[inline]
-    pub fn get_receiver(escrow: &Escrow) -> Address {
-        escrow.roles.receiver.clone()
+    pub fn init_from_constructor(e: &Env, init: EscrowInit) -> Result<Escrow, EscrowError> {
+        validate_init(e, &init)?;
+        let escrow = Escrow {
+            terms: init.terms,
+            tenant: init.tenant,
+            invite_hash: init.invite_hash,
+            status: Status::Proposed,
+            approvals: Approvals {
+                target: 2,
+                approval_count: 0,
+                approved_by: soroban_sdk::Vec::new(e),
+            },
+            shares: 0,
+            created_ts: e.ledger().timestamp(),
+            funded_ts: 0,
+            dispute: Dispute {
+                reason_hash: None,
+                stopped_ts: 0,
+                expert_ref: None,
+                report_hash: None,
+                bond_held: 0,
+                stop_justified: None,
+            },
+            settlement: Settlement {
+                total: 0,
+                yield_total: 0,
+                deduction: 0,
+                to_tenant: 0,
+                to_landlord: 0,
+                to_treasury: 0,
+                to_tw: 0,
+            },
+            path: SettlePath::Pending,
+        };
+        Self::save(e, &escrow);
+        Ok(escrow)
     }
 
-    pub fn initialize_escrow(e: &Env, escrow_properties: Escrow) -> Result<Escrow, EscrowError> {
-        validate_initialize_escrow_conditions(e, &escrow_properties)?;
-        let stored_admin: Address = e
-            .storage()
-            .persistent()
-            .get(&DataKey::Admin)
-            .ok_or(EscrowError::OnlyAdminAddressExecuteThisFunction)?;
-        stored_admin.require_auth();
-        e.storage()
-            .persistent()
-            .set(&DataKey::Escrow, &escrow_properties);
-        e.storage()
-            .persistent()
-            .extend_ttl(&DataKey::Escrow, 17280, 31536000);
-        e.storage().persistent().remove(&DataKey::Admin);
-        e.storage().persistent().remove(&DataKey::ApprovedWasmHash);
-        Ok(escrow_properties)
+    pub fn cancel(e: &Env) -> Result<Escrow, EscrowError> {
+        let mut escrow = Self::get_escrow(e)?;
+        escrow.terms.landlord.require_auth();
+        if escrow.status != Status::Proposed {
+            return Err(EscrowError::BadStatus);
+        }
+        escrow.status = Status::Cancelled;
+        Self::save(e, &escrow);
+        Ok(escrow)
     }
 
     pub fn fund_escrow(
         e: &Env,
-        signer: &Address,
-        expected_escrow: &Escrow,
-        amount: i128,
-    ) -> Result<i128, EscrowError> {
-        let stored_escrow: Escrow = Self::get_escrow(e)?;
-        let token_client = TokenClient::new(e, &stored_escrow.trustline.address);
-        let balance = token_client.balance(signer);
-        validate_fund_escrow_conditions(amount, balance, &stored_escrow, expected_escrow)?;
+        tenant: &Address,
+        invite_code: &Option<BytesN<32>>,
+        expected_terms: &Terms,
+    ) -> Result<(Escrow, i128), EscrowError> {
+        tenant.require_auth();
+        let mut escrow = Self::get_escrow(e)?;
+        if escrow.status != Status::Proposed {
+            return Err(EscrowError::BadStatus);
+        }
+        if e.ledger().timestamp() >= escrow.terms.end_ts {
+            return Err(EscrowError::InvalidEndTs);
+        }
+        if *expected_terms != escrow.terms {
+            return Err(EscrowError::TermsMismatch);
+        }
+        Self::check_tenant(e, &escrow, tenant, invite_code)?;
+        validate_parties(e, &escrow.terms, tenant)?;
+        Self::check_funding_allowed(e, &escrow.terms)?;
 
-        signer.require_auth();
-
-        token_client.transfer(signer, &e.current_contract_address(), &amount);
-
-        let current_funded: i128 = e
-            .storage()
-            .persistent()
-            .get(&DataKey::FundedAmount)
-            .unwrap_or(0);
-        let new_funded = BasicMath::safe_add(current_funded, amount)?;
-        e.storage()
-            .persistent()
-            .set(&DataKey::FundedAmount, &new_funded);
-        e.storage()
-            .persistent()
-            .extend_ttl(&DataKey::FundedAmount, 17280, 31536000);
-
-        Ok(new_funded)
-    }
-
-    pub fn release_funds(
-        e: &Env,
-        release_signer: &Address,
-        trustless_work_address: &Address,
-    ) -> Result<(Escrow, StandardFeeResult), EscrowError> {
-        let escrow = Self::get_escrow(e)?;
-        validate_release_conditions(&escrow, release_signer)?;
-        release_signer.require_auth();
-        Self::release_funds_execute(e, trustless_work_address, escrow)
-    }
-
-    pub(crate) fn release_funds_inner(
-        e: &Env,
-        release_signer: &Address,
-        trustless_work_address: &Address,
-    ) -> Result<(Escrow, StandardFeeResult), EscrowError> {
-        let escrow = Self::get_escrow(e)?;
-        validate_release_conditions(&escrow, release_signer)?;
-        Self::release_funds_execute(e, trustless_work_address, escrow)
-    }
-
-    fn release_funds_execute(
-        e: &Env,
-        trustless_work_address: &Address,
-        mut escrow: Escrow,
-    ) -> Result<(Escrow, StandardFeeResult), EscrowError> {
-        escrow.released = true;
-        e.storage().persistent().set(&DataKey::Escrow, &escrow);
-        e.storage()
-            .persistent()
-            .extend_ttl(&DataKey::Escrow, 17280, 31536000);
-
-        let contract_address = e.current_contract_address();
-        let token_client = TokenClient::new(e, &escrow.trustline.address);
-
-        if token_client.balance(&contract_address) < escrow.amount {
-            return Err(EscrowError::EscrowBalanceNotEnoughToSendEarnings);
+        let me = e.current_contract_address();
+        let amount = escrow.terms.amount;
+        let token = TokenClient::new(e, &escrow.terms.strategy.asset);
+        let before = token.balance(&me);
+        token.transfer(tenant, &me, &amount);
+        let received = token
+            .balance(&me)
+            .checked_sub(before)
+            .ok_or(EscrowError::Arithmetic)?;
+        if received != amount {
+            return Err(EscrowError::InvalidAmount);
         }
 
-        let fee_result =
-            FeeCalculator::calculate_standard_fees(escrow.amount, escrow.platform_fee)?;
+        // FIANZAS: el depósito en el vault de DeFindex llega con `modules/vault` y el mock-vault.
+        // Hasta entonces la factory solo registra estrategias NoYield.
+        let shares: i128 = match escrow.terms.strategy.kind {
+            StrategyKind::NoYield => 0,
+            StrategyKind::DeFindexVault => return Err(EscrowError::VaultError),
+        };
 
-        if fee_result.trustless_work_fee > 0 {
-            token_client.transfer(
-                &contract_address,
-                trustless_work_address,
-                &fee_result.trustless_work_fee,
-            );
-        }
+        escrow.tenant = Some(tenant.clone());
+        escrow.shares = shares;
+        escrow.funded_ts = e.ledger().timestamp();
+        escrow.status = Status::Active;
+        Self::save(e, &escrow);
 
-        if fee_result.platform_fee > 0 {
-            token_client.transfer(
-                &contract_address,
-                &escrow.roles.platform,
-                &fee_result.platform_fee,
-            );
-        }
-
-        let receiver = Self::get_receiver(&escrow);
-        if fee_result.receiver_amount > 0 {
-            token_client.transfer(&contract_address, &receiver, &fee_result.receiver_amount);
-        }
-
-        Ok((escrow, fee_result))
+        Self::register_tenant(e, &escrow.terms, tenant)?;
+        Ok((escrow, shares))
     }
 
-    pub fn change_escrow_properties(
+    fn check_tenant(
         e: &Env,
-        admin: &Address,
-        escrow_properties: Escrow,
-    ) -> Result<Escrow, EscrowError> {
-        let existing_escrow = Self::get_escrow(e)?;
-        let funded_amount: i128 = e
-            .storage()
-            .persistent()
-            .get(&DataKey::FundedAmount)
-            .unwrap_or(0);
-
-        validate_escrow_property_change_conditions(
-            &existing_escrow,
-            &escrow_properties,
-            admin,
-            funded_amount,
-        )?;
-
-        admin.require_auth();
-
-        let mut escrow_to_save = escrow_properties;
-        escrow_to_save.milestones = existing_escrow.milestones.clone();
-        escrow_to_save.dispute = existing_escrow.dispute.clone();
-        escrow_to_save.released = existing_escrow.released;
-
-        e.storage()
-            .persistent()
-            .set(&DataKey::Escrow, &escrow_to_save);
-        e.storage()
-            .persistent()
-            .extend_ttl(&DataKey::Escrow, 17280, 31536000);
-        Ok(escrow_to_save)
-    }
-
-    pub fn manage_milestones(
-        e: &Env,
-        admin: &Address,
-        new_milestones: Vec<Milestone>,
-        milestone_updates: Vec<MilestoneUpdate>,
-    ) -> Result<Escrow, EscrowError> {
-        let mut existing_escrow = Self::get_escrow(e)?;
-        let funded_amount: i128 = e
-            .storage()
-            .persistent()
-            .get(&DataKey::FundedAmount)
-            .unwrap_or(0);
-
-        validate_manage_milestones_conditions(
-            &existing_escrow,
-            admin,
-            &new_milestones,
-            &milestone_updates,
-            funded_amount,
-        )?;
-        admin.require_auth();
-
-        for update in milestone_updates.iter() {
-            let mut milestone = existing_escrow.milestones.get(update.index).unwrap();
-            if let Some(desc) = update.new_description {
-                milestone.description = desc;
+        escrow: &Escrow,
+        tenant: &Address,
+        invite_code: &Option<BytesN<32>>,
+    ) -> Result<(), EscrowError> {
+        match (&escrow.invite_hash, &escrow.tenant) {
+            (Some(hash), _) => {
+                let code = invite_code.as_ref().ok_or(EscrowError::InvalidInvite)?;
+                let digest: BytesN<32> = e
+                    .crypto()
+                    .sha256(&Bytes::from_array(e, &code.to_array()))
+                    .to_bytes();
+                if digest != *hash {
+                    return Err(EscrowError::InvalidInvite);
+                }
+                Ok(())
             }
-            existing_escrow.milestones.set(update.index, milestone);
+            (None, Some(fixed)) if fixed == tenant => Ok(()),
+            _ => Err(EscrowError::NotParty),
         }
-
-        for milestone in new_milestones.iter() {
-            existing_escrow.milestones.push_back(milestone);
-        }
-
-        e.storage()
-            .persistent()
-            .set(&DataKey::Escrow, &existing_escrow);
-        e.storage()
-            .persistent()
-            .extend_ttl(&DataKey::Escrow, 17280, 31536000);
-        Ok(existing_escrow)
     }
 
-    pub fn get_multiple_escrow_balances(
-        e: &Env,
-        addresses: Vec<Address>,
-    ) -> Result<Vec<AddressBalance>, EscrowError> {
-        const MAX_ESCROWS: u32 = 20;
-        if addresses.len() > MAX_ESCROWS {
-            return Err(EscrowError::TooManyEscrowsRequested);
+    // FIANZAS: llamadas a la factory con `try_` (security N-1): si fallan, FactoryCall.
+    fn check_funding_allowed(e: &Env, terms: &Terms) -> Result<(), EscrowError> {
+        let args = vec![e, terms.strategy.id.into_val(e)];
+        let allowed = e.try_invoke_contract::<bool, soroban_sdk::Error>(
+            &terms.factory,
+            &Symbol::new(e, "funding_allowed"),
+            args,
+        );
+        match allowed {
+            Ok(Ok(true)) => Ok(()),
+            Ok(Ok(false)) => Err(EscrowError::Paused),
+            _ => Err(EscrowError::FactoryCall),
         }
-
-        let mut balances: Vec<AddressBalance> = Vec::new(e);
-        let self_addr = e.current_contract_address();
-        for address in addresses.iter() {
-            let escrow = if address == self_addr {
-                Self::get_escrow(e)?
-            } else {
-                Self::get_escrow_by_contract_id(e, &address)?
-            };
-            let token_client = TokenClient::new(e, &escrow.trustline.address);
-            let balance = token_client.balance(&address);
-            balances.push_back(AddressBalance {
-                address: address.clone(),
-                balance,
-                trustline_decimals: token_client.decimals(),
-            });
-        }
-        Ok(balances)
     }
 
-    pub fn get_escrow_by_contract_id(
-        e: &Env,
-        contract_id: &Address,
-    ) -> Result<Escrow, EscrowError> {
-        Ok(e.invoke_contract::<Escrow>(contract_id, &Symbol::new(e, "get_escrow"), Vec::new(e)))
+    fn register_tenant(e: &Env, terms: &Terms, tenant: &Address) -> Result<(), EscrowError> {
+        let args: soroban_sdk::Vec<Val> = vec![e, terms.id.into_val(e), tenant.into_val(e)];
+        match e.try_invoke_contract::<(), soroban_sdk::Error>(
+            &terms.factory,
+            &Symbol::new(e, "register_tenant"),
+            args,
+        ) {
+            Ok(Ok(())) => Ok(()),
+            _ => Err(EscrowError::FactoryCall),
+        }
     }
 
     pub fn get_escrow(e: &Env) -> Result<Escrow, EscrowError> {
-        Ok(e.storage()
+        e.storage()
             .persistent()
             .get(&DataKey::Escrow)
-            .ok_or(EscrowError::EscrowNotFound)?)
+            .ok_or(EscrowError::BadStatus)
+    }
+
+    pub fn extend_ttl(e: &Env) {
+        let max = e.storage().max_ttl();
+        e.storage().instance().extend_ttl(TTL_THRESHOLD, max);
+        if e.storage().persistent().has(&DataKey::Escrow) {
+            e.storage()
+                .persistent()
+                .extend_ttl(&DataKey::Escrow, TTL_THRESHOLD, max);
+        }
+    }
+
+    fn save(e: &Env, escrow: &Escrow) {
+        e.storage().persistent().set(&DataKey::Escrow, escrow);
+        Self::extend_ttl(e);
     }
 }
