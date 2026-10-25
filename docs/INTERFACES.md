@@ -381,19 +381,40 @@ export function createRelayHandler(cfg: { policy: RelayPolicy; relayerUrl: strin
 - Las respuestas solo llevan `{ code }` (SRV-8).
 
 ## 9. `packages/anchor` (P3)
+Implementación: `packages/anchor/src`. En la hackatón se usa el **ramp simulado** ([AD-8]); el anchor SEP-24 real queda para después (las cuentas con passkey necesitan SEP-45, que sigue en Draft).
+
 ```ts
+import { createSimulatedAnchor, FakeAnchor, AnchorError } from "@fianzas/anchor";
+
 export interface Anchor {
-  startDeposit(address: string, assetCode: string): Promise<{ url: string; id: string }>;   // URL interactiva SEP-24
-  startWithdraw(address: string, assetCode: string): Promise<{ url: string; id: string }>;
+  // amount en unidades del token ("12.5"): lo usa el ramp simulado; en SEP-24 lo pide el anchor
+  startDeposit(address: string, assetCode: string, amount?: string): Promise<{ url: string; id: string }>; // url "" si es simulado
+  startWithdraw(address: string, assetCode: string, amount?: string): Promise<{ url: string; id: string }>; // simulado: NOT_SUPPORTED
   status(id: string): Promise<"pending" | "completed" | "error">;
   isSimulated: boolean; // true en el plan B: la UI lo muestra
 }
+export function createSimulatedAnchor(cfg: { rampUrl: string }): Anchor; // rampUrl: "/api/ramp"
+export class FakeAnchor implements Anchor { constructor(delayMs?: number) }
+export class AnchorError extends Error { code: "NOT_SUPPORTED" | "INVALID_AMOUNT" | "RATE_LIMITED" | "DISABLED" | "RAMP_DOWN" }
 ```
 
 **Ramp simulado (`@fianzas/anchor/server`, plan B)** (security SRV-10…SRV-15):
+```ts
+export function createSimRampHandler(cfg: {
+  networkPassphrase: string; rpcUrl: string;
+  faucetSecret: string;         // RAMP_FAUCET_SECRET
+  token: string;                // deployments.token
+  accountWasmHashes: string[];  // [deployments.smartAccount.accountWasmHash]
+  enabled: boolean;             // RAMP_ENABLED
+  allowedOrigins: string[];
+  maxAmount: string; perAddressCap: string; perIpPerHour: number; globalHourlyCap: number;
+}): { POST: (req: Request) => Promise<Response>; GET: (req: Request) => Promise<Response> };
+// app/api/ramp/route.ts: export const { POST, GET } = createSimRampHandler({ … })
+```
+- `POST { to, amount }` → `{ id, status: "completed" }` cuando la transferencia se confirma. `GET ?id=` → `{ status }`, solo de ids emitidos por esa instancia.
 - `createSimRampHandler` lanza una excepción al construirse con la *passphrase* de mainnet.
 - Solo envía a C-address que sean smart accounts nuestros (ejecutable = `smartAccount.accountWasmHash`).
-- `amount` validado con `^\d{1,6}(\.\d{1,7})?$` y convertido con `BigInt`. Topes por petición, por dirección, por IP y global por hora. Con `RAMP_ENABLED=0` responde `403`.
+- `amount` validado con `^\d{1,6}(\.\d{1,7})?$` y convertido con `BigInt`. Topes por petición, por dirección, por IP y global por hora. Con `RAMP_ENABLED=0` responde `403`. Una transacción de la faucet a la vez.
 - La cuenta faucet es exclusiva (no es staff, admin, treasury ni deployer) y tiene saldo acotado.
 
 ## 10. Presets de política de yield (P4 en el front)
