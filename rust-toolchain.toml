@@ -1,0 +1,5 @@
+# Toolchain común del equipo. Área `deps` (P2). `rustup` lo aplica solo al entrar en el repo.
+[toolchain]
+channel = "stable"
+targets = ["wasm32v1-none"]
+components = ["rustfmt", "clippy"]
