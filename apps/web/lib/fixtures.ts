@@ -9,6 +9,7 @@ export const CONFIG = {
   platform_fee_bps: 2000,
   stop_bond_min: toUnits(10),
   stop_bond_bps: 500,
+  tenant_yield_bps: 0, // set per jurisdiction in GlobalConfig (issue #16). MVP: Portugal, all net yield to the landlord
   timeout_secs: 30n * DAY,
   review_timeout_secs: 30n * DAY,
 };
@@ -22,7 +23,6 @@ interface Opts {
   amount: number;
   endInDays: number;
   fundedDaysAgo?: number;
-  tenantYieldBps?: number;
   strategyId?: string;
   accrued?: number;
   approvedBy?: string[];
@@ -38,7 +38,6 @@ function row(id: number, status: Status, o: Opts): DepositRow {
   const funded = o.fundedDaysAgo !== undefined;
   const stopped_ts = o.stoppedDaysAgo !== undefined ? now - BigInt(o.stoppedDaysAgo) * DAY : 0n;
   const accrued = toUnits(o.accrued ?? 0);
-  const tenantYieldBps = o.tenantYieldBps ?? 10000;
   const approvedBy = o.approvedBy ?? [];
   const settled = status === "Settled";
   return {
@@ -55,7 +54,7 @@ function row(id: number, status: Status, o: Opts): DepositRow {
         landlord: ME_LANDLORD,
         amount,
         end_ts,
-        tenant_yield_bps: tenantYieldBps,
+        tenant_yield_bps: CONFIG.tenant_yield_bps,
         strategy: strategyById(o.strategyId ?? "usdc_fixed"),
         platform_fee_bps: CONFIG.platform_fee_bps,
         treasury: "FIXTURE_TREASURY",
@@ -79,7 +78,7 @@ function row(id: number, status: Status, o: Opts): DepositRow {
         bond_held: stopped_ts ? computeStopBond(amount, CONFIG.stop_bond_min, CONFIG.stop_bond_bps) : 0n,
         stop_justified: null,
       },
-      settlement: settled ? split(amount, amount + accrued, 0n, CONFIG.platform_fee_bps, tenantYieldBps) : null,
+      settlement: settled ? split(amount, amount + accrued, 0n, CONFIG.platform_fee_bps, CONFIG.tenant_yield_bps) : null,
       path: settled ? "Approved" : null,
     },
   };
@@ -87,11 +86,11 @@ function row(id: number, status: Status, o: Opts): DepositRow {
 
 export const DEPOSITS: DepositRow[] = [
   row(1, "Proposed", { amount: 800, endInDays: 300 }),
-  row(2, "Active", { amount: 1200, endInDays: 305, fundedDaysAgo: 60, accrued: 12.4, tenantYieldBps: 5000 }),
+  row(2, "Active", { amount: 1200, endInDays: 305, fundedDaysAgo: 60, accrued: 12.4 }),
   row(3, "Ending", { amount: 950, endInDays: -2, fundedDaysAgo: 365, accrued: 58.1, approvedBy: [ME_TENANT] }),
   row(4, "Stopped", { amount: 1100, endInDays: -5, fundedDaysAgo: 370, accrued: 66.9, stoppedDaysAgo: 1 }),
   row(5, "UnderReview", { amount: 700, endInDays: -10, fundedDaysAgo: 380, accrued: 44.2, stoppedDaysAgo: 6, expert: true, report: true }),
-  row(6, "Settled", { amount: 1000, endInDays: -40, fundedDaysAgo: 400, accrued: 61.0, approvedBy: [ME_TENANT, ME_LANDLORD], tenantYieldBps: 0 }),
+  row(6, "Settled", { amount: 1000, endInDays: -40, fundedDaysAgo: 400, accrued: 61.0, approvedBy: [ME_TENANT, ME_LANDLORD] }),
   row(7, "Active", { amount: 650, endInDays: 120, fundedDaysAgo: 30, strategyId: "usdc_mock", accrued: 3.3 }),
 ];
 
