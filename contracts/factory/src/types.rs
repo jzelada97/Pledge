@@ -7,6 +7,7 @@ pub const MAX_TERM_SECS: u64 = 3 * 365 * 86_400;
 pub const MAX_PAGE: u32 = 50;
 pub const MAX_VIEWS: u32 = 25;
 pub const MAX_STRATEGIES: u32 = 10;
+pub const MAX_BATCH: u32 = 10;
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -34,6 +35,7 @@ pub struct FianzaParams {
     pub end_ts: u64,
     pub strategy_id: Option<Symbol>,
     pub nonce: BytesN<32>,
+    pub expected_config_version: u32, // FAC-6: el casero firma la versión de config que vio
 }
 
 #[contracttype]
@@ -41,6 +43,7 @@ pub struct FianzaParams {
 pub struct Created {
     pub id: u64,
     pub escrow: Address,
+    pub wasm_hash: BytesN<32>, // FAC-4
 }
 
 #[contracttype]

@@ -6,6 +6,7 @@ mod error;
 mod events;
 mod storage;
 mod types;
+mod vault;
 
 pub mod escrow {
     soroban_sdk::contractimport!(file = "../../target/wasm32v1-none/release/escrow.wasm");
