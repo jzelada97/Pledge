@@ -9,9 +9,10 @@ use crate::escrow::{self, EscrowInit, RiskTier, Status, Strategy, StrategyKind, 
 use crate::events::{FConfig, FCreated, FPaused, FStrategy, FTenant, FUnpaused, FWasm};
 use crate::storage;
 use crate::types::{
-    Created, FianzaParams, FianzaSummary, GlobalConfig, MAX_AMOUNT, MAX_PAGE, MAX_STRATEGIES,
-    MAX_TERM_SECS, MAX_VIEWS,
+    Created, FianzaParams, FianzaSummary, GlobalConfig, MAX_AMOUNT, MAX_BATCH, MAX_PAGE,
+    MAX_STRATEGIES, MAX_TERM_SECS, MAX_VIEWS,
 };
+use crate::vault;
 
 const MAX_BPS: u32 = 10_000;
 const MAX_PLATFORM_FEE_BPS: u32 = 5_000;
@@ -57,18 +58,21 @@ fn validate_config(e: &Env, c: &GlobalConfig) -> Result<(), FactoryError> {
     Ok(())
 }
 
+/// FAC-7: registro de estrategias. Las comisiones y el manager del vault se comprueban
+/// aparte con `vault::check`, también al crear y al fondear (FAC-8).
 fn validate_strategy(e: &Env, config: &GlobalConfig, s: &Strategy) -> Result<(), FactoryError> {
-    match s.kind {
-        StrategyKind::NoYield => {
-            if s.vault.is_some() || s.risk != RiskTier::NoYield || s.max_vault_fee_bps != 0 {
-                return Err(FactoryError::InvalidStrategy);
-            }
-        }
-        // El depósito en DeFindex llega con el mock-vault (fase 3b): hasta entonces el
-        // registro solo admite estrategias NoYield.
-        StrategyKind::DeFindexVault => return Err(FactoryError::InvalidStrategy),
+    // NoYield ⇔ sin vault ⇔ riesgo NoYield.
+    let no_yield = s.kind == StrategyKind::NoYield;
+    if no_yield == s.vault.is_some() || no_yield != (s.risk == RiskTier::NoYield) {
+        return Err(FactoryError::InvalidStrategy);
     }
-    if s.max_vault_fee_bps > MAX_VAULT_FEE_BPS {
+    if let Some(v) = &s.vault {
+        let me = e.current_contract_address();
+        if *v == config.token || *v == me || *v == config.treasury || config.staff.contains(v) {
+            return Err(FactoryError::InvalidStrategy);
+        }
+    }
+    if s.max_vault_fee_bps > MAX_VAULT_FEE_BPS || (no_yield && s.max_vault_fee_bps != 0) {
         return Err(FactoryError::VaultFeeTooHigh);
     }
     // Fija el emisor exacto: en Stellar hay tokens falsos con el mismo código.
@@ -110,17 +114,114 @@ fn validate_parties(
     Ok(())
 }
 
-/// `salt = sha256(landlord.to_xdr() ‖ nonce)`: la dirección del escrow se conoce antes de firmar.
+/// FAC-3: `salt = sha256(landlord.to_xdr() ‖ nonce)`. Única función de la salt, la usan
+/// `create_fianza` y `predict_address`.
 fn escrow_salt(e: &Env, landlord: &Address, nonce: &BytesN<32>) -> BytesN<32> {
     let mut preimage: Bytes = landlord.clone().to_xdr(e);
     preimage.append(&Bytes::from_array(e, &nonce.to_array()));
     e.crypto().sha256(&preimage).to_bytes()
 }
 
+/// Valida y despliega una fianza. La auth del casero la pide quien llama.
+fn create_one(e: &Env, landlord: &Address, p: FianzaParams) -> Result<Created, FactoryError> {
+    if storage::paused(e) {
+        return Err(FactoryError::Paused);
+    }
+    // FAC-6: el casero firma la versión de configuración que vio en el front.
+    if p.expected_config_version != storage::config_version(e) {
+        return Err(FactoryError::ConfigChanged);
+    }
+    let config = storage::config(e);
+    let strategy_id = match &p.strategy_id {
+        Some(id) => id.clone(),
+        None => storage::default_strategy_id(e).ok_or(FactoryError::StrategyNotFound)?,
+    };
+    let strategy = storage::strategy(e, &strategy_id)?;
+    if !strategy.enabled {
+        return Err(FactoryError::StrategyDisabled);
+    }
+    if p.amount <= 0 || p.amount > MAX_AMOUNT {
+        return Err(FactoryError::InvalidAmount);
+    }
+    let now = e.ledger().timestamp();
+    let max_end = now
+        .checked_add(MAX_TERM_SECS)
+        .ok_or(FactoryError::Arithmetic)?;
+    if p.end_ts <= now || p.end_ts > max_end {
+        return Err(FactoryError::InvalidEndTs);
+    }
+    if p.tenant.is_some() == p.invite_hash.is_some() {
+        return Err(FactoryError::InvalidInvite);
+    }
+    validate_parties(e, &config, &strategy, landlord, &p.tenant)?;
+    let (vault_fee_bps, protocol_fee_bps) = vault::check(e, &config, &strategy)?;
+
+    let deployer = e
+        .deployer()
+        .with_current_contract(escrow_salt(e, landlord, &p.nonce));
+    if storage::id_of(e, &deployer.deployed_address()).is_some() {
+        return Err(FactoryError::NonceUsed);
+    }
+
+    let id = storage::next_id(e)?;
+    let wasm_hash = storage::wasm_hash(e);
+    let terms = Terms {
+        factory: e.current_contract_address(),
+        id,
+        landlord: landlord.clone(),
+        amount: p.amount,
+        end_ts: p.end_ts,
+        tenant_yield_bps: config.tenant_yield_bps,
+        strategy: strategy.clone(),
+        platform_fee_bps: config.platform_fee_bps,
+        tw_fee_bps: config.tw_fee_bps,
+        tw_fee_receiver: config.tw_fee_receiver.clone(),
+        defindex_vault_fee_bps: vault_fee_bps,
+        defindex_protocol_fee_bps: protocol_fee_bps,
+        treasury: config.treasury.clone(),
+        dispute_resolvers: config.staff.clone(),
+        timeout_secs: config.timeout_secs,
+        review_timeout_secs: config.review_timeout_secs,
+        stop_bond: compute_stop_bond(p.amount, config.stop_bond_min, config.stop_bond_bps)?,
+    };
+    let init = EscrowInit {
+        terms,
+        tenant: p.tenant,
+        invite_hash: p.invite_hash,
+    };
+    let escrow = deployer.deploy_contract(ContractExecutable::Wasm(wasm_hash.clone()), (init,));
+
+    storage::register_escrow(e, id, &escrow);
+    storage::push_landlord(e, landlord, id)?;
+    FCreated {
+        id,
+        escrow: escrow.clone(),
+        landlord: landlord.clone(),
+        amount: p.amount,
+        strategy_id: strategy.id,
+        defindex_vault_fee_bps: vault_fee_bps,
+        defindex_protocol_fee_bps: protocol_fee_bps,
+        wasm_hash: wasm_hash.clone(),
+    }
+    .publish(e);
+    Ok(Created {
+        id,
+        escrow,
+        wasm_hash,
+    })
+}
+
 fn require_admin(e: &Env) -> Address {
     let admin = storage::admin(e);
     admin.require_auth();
     admin
+}
+
+/// Cierra un cambio de admin: nueva versión de config (FAC-6) y TTL de la instancia.
+fn admin_changed(e: &Env) -> Result<(), FactoryError> {
+    storage::bump_config_version(e)?;
+    storage::bump_instance(e);
+    Ok(())
 }
 
 fn effective_status(e: &Env, data: &escrow::Escrow) -> Status {
@@ -180,84 +281,28 @@ impl FianzaFactory {
         p: FianzaParams,
     ) -> Result<Created, FactoryError> {
         landlord.require_auth();
-        if storage::paused(&e) {
-            return Err(FactoryError::Paused);
-        }
-        let config = storage::config(&e);
-        let strategy_id = match &p.strategy_id {
-            Some(id) => id.clone(),
-            None => storage::default_strategy_id(&e).ok_or(FactoryError::StrategyNotFound)?,
-        };
-        let strategy = storage::strategy(&e, &strategy_id)?;
-        if !strategy.enabled {
-            return Err(FactoryError::StrategyDisabled);
-        }
-        if p.amount <= 0 || p.amount > MAX_AMOUNT {
-            return Err(FactoryError::InvalidAmount);
-        }
-        let now = e.ledger().timestamp();
-        let max_end = now
-            .checked_add(MAX_TERM_SECS)
-            .ok_or(FactoryError::Arithmetic)?;
-        if p.end_ts <= now || p.end_ts > max_end {
-            return Err(FactoryError::InvalidEndTs);
-        }
-        if p.tenant.is_some() == p.invite_hash.is_some() {
-            return Err(FactoryError::InvalidInvite);
-        }
-        validate_parties(&e, &config, &strategy, &landlord, &p.tenant)?;
-
-        let deployer = e
-            .deployer()
-            .with_current_contract(escrow_salt(&e, &landlord, &p.nonce));
-        if storage::id_of(&e, &deployer.deployed_address()).is_some() {
-            return Err(FactoryError::NonceUsed);
-        }
-
-        let id = storage::next_id(&e)?;
-        // Solo hay estrategias NoYield (ver validate_strategy): sin comisiones de DeFindex.
-        let (vault_fee_bps, protocol_fee_bps) = (0, 0);
-        let terms = Terms {
-            factory: e.current_contract_address(),
-            id,
-            landlord: landlord.clone(),
-            amount: p.amount,
-            end_ts: p.end_ts,
-            tenant_yield_bps: config.tenant_yield_bps,
-            strategy: strategy.clone(),
-            platform_fee_bps: config.platform_fee_bps,
-            tw_fee_bps: config.tw_fee_bps,
-            tw_fee_receiver: config.tw_fee_receiver.clone(),
-            defindex_vault_fee_bps: vault_fee_bps,
-            defindex_protocol_fee_bps: protocol_fee_bps,
-            treasury: config.treasury.clone(),
-            dispute_resolvers: config.staff.clone(),
-            timeout_secs: config.timeout_secs,
-            review_timeout_secs: config.review_timeout_secs,
-            stop_bond: compute_stop_bond(p.amount, config.stop_bond_min, config.stop_bond_bps)?,
-        };
-        let init = EscrowInit {
-            terms,
-            tenant: p.tenant,
-            invite_hash: p.invite_hash,
-        };
-        let escrow =
-            deployer.deploy_contract(ContractExecutable::Wasm(storage::wasm_hash(&e)), (init,));
-
-        storage::register_escrow(&e, id, &escrow);
-        storage::push_landlord(&e, &landlord, id)?;
+        let created = create_one(&e, &landlord, p)?;
         storage::bump_instance(&e);
-        FCreated {
-            id,
-            escrow: escrow.clone(),
-            landlord,
-            amount: p.amount,
-            strategy_id: strategy.id,
-            defindex_vault_fee_bps: vault_fee_bps,
-            defindex_protocol_fee_bps: protocol_fee_bps,
+        Ok(created)
+    }
+
+    /// FAC-9: atómica (un fallo revierte todos los despliegues) y con una sola firma del
+    /// casero. No pasa por el Relayer (N-3).
+    pub fn create_fianzas_batch(
+        e: Env,
+        landlord: Address,
+        items: Vec<FianzaParams>,
+    ) -> Result<Vec<Created>, FactoryError> {
+        landlord.require_auth();
+        if items.is_empty() || items.len() > MAX_BATCH {
+            return Err(FactoryError::TooMany);
         }
-        .publish(&e);
-        Ok(Created { id, escrow })
+        let mut created = Vec::new(&e);
+        for p in items.iter() {
+            created.push_back(create_one(&e, &landlord, p)?);
+        }
+        storage::bump_instance(&e);
+        Ok(created)
     }
 
     pub fn predict_address(e: Env, landlord: Address, nonce: BytesN<32>) -> Address {
@@ -266,7 +311,7 @@ impl FianzaFactory {
             .deployed_address()
     }
 
-    /// Solo la llama el propio escrow desde `fund_escrow` (invocador directo).
+    /// FAC-5: solo la llama el propio escrow desde `fund_escrow` (invocador directo).
     pub fn register_tenant(e: Env, id: u64, tenant: Address) -> Result<(), FactoryError> {
         let escrow = storage::escrow_of(&e, id)?;
         escrow.require_auth();
@@ -280,21 +325,27 @@ impl FianzaFactory {
         Ok(())
     }
 
+    /// `!paused ∧ strategy.enabled` y, si hay vault, sus comisiones y su manager siguen
+    /// dentro de lo admitido (FAC-8, fail-closed).
     pub fn funding_allowed(e: Env, strategy_id: Symbol) -> bool {
-        !storage::paused(&e)
-            && storage::strategy(&e, &strategy_id)
-                .map(|s| s.enabled)
-                .unwrap_or(false)
+        if storage::paused(&e) {
+            return false;
+        }
+        match storage::strategy(&e, &strategy_id) {
+            Ok(s) => s.enabled && vault::check(&e, &storage::config(&e), &s).is_ok(),
+            Err(_) => false,
+        }
     }
 
     // ---------- Admin ----------
 
-    pub fn set_escrow_wasm_hash(e: Env, hash: BytesN<32>) {
+    pub fn set_escrow_wasm_hash(e: Env, hash: BytesN<32>) -> Result<(), FactoryError> {
         require_admin(&e);
         let old = storage::wasm_hash(&e);
         storage::set_wasm_hash(&e, &hash);
-        storage::bump_instance(&e);
+        admin_changed(&e)?;
         FWasm { old, new: hash }.publish(&e);
+        Ok(())
     }
 
     pub fn set_config(e: Env, config: GlobalConfig) -> Result<(), FactoryError> {
@@ -305,7 +356,7 @@ impl FianzaFactory {
             return Err(FactoryError::InvalidConfig);
         }
         storage::set_config(&e, &config);
-        storage::bump_instance(&e);
+        admin_changed(&e)?;
         FConfig { config }.publish(&e);
         Ok(())
     }
@@ -319,11 +370,13 @@ impl FianzaFactory {
         if storage::strategy_ids(&e).len() >= MAX_STRATEGIES {
             return Err(FactoryError::TooMany);
         }
-        validate_strategy(&e, &storage::config(&e), &s)?;
+        let config = storage::config(&e);
+        validate_strategy(&e, &config, &s)?;
+        vault::check(&e, &config, &s)?;
         let mut s = s;
         s.enabled = false;
         storage::set_strategy(&e, &s);
-        storage::bump_instance(&e);
+        admin_changed(&e)?;
         FStrategy {
             id: s.id,
             enabled: false,
@@ -344,7 +397,7 @@ impl FianzaFactory {
         }
         s.enabled = enabled;
         storage::set_strategy(&e, &s);
-        storage::bump_instance(&e);
+        admin_changed(&e)?;
         FStrategy {
             id,
             enabled,
@@ -363,7 +416,7 @@ impl FianzaFactory {
             return Err(FactoryError::StrategyDisabled);
         }
         storage::set_default_strategy_id(&e, &id);
-        storage::bump_instance(&e);
+        admin_changed(&e)?;
         FStrategy {
             id,
             enabled: true,
@@ -393,6 +446,10 @@ impl FianzaFactory {
 
     pub fn config(e: Env) -> GlobalConfig {
         storage::config(&e)
+    }
+
+    pub fn config_version(e: Env) -> u32 {
+        storage::config_version(&e)
     }
 
     pub fn escrow_wasm_hash(e: Env) -> BytesN<32> {

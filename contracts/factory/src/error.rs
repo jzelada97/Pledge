@@ -24,4 +24,5 @@ pub enum FactoryError {
     VaultFeeTooHigh = 18,
     VaultNotPlatformManaged = 19,
     NonceUsed = 20,
+    ConfigChanged = 21,
 }

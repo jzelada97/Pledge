@@ -14,6 +14,7 @@ pub struct FCreated {
     pub strategy_id: Symbol,
     pub defindex_vault_fee_bps: u32,
     pub defindex_protocol_fee_bps: u32,
+    pub wasm_hash: BytesN<32>,
 }
 
 #[contractevent(topics = ["f_tenant"])]
