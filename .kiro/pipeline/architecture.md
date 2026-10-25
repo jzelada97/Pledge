@@ -1,28 +1,9 @@
-# Architecture Decision Record · Fianzas de habitación en Soroban (v2: escrow propio por fianza + factory)
+# Architecture Decision Record · Fianzas de habitación en Soroban (v2: fork de Trustless Work)
 
 > Revisión del agente de arquitectura del 2026-10-25. Sustituye entera a la versión anterior (opción A, escrow propio singleton).
 > Entradas: `.kiro/pipeline/enriched-prompt.md`, la versión anterior de este documento, `.kiro/pipeline/security.md` (incluida la sección 12, *stop bond*), `docs/INTERFACES.md`, `docs/PIPELINE.md`, `harness/team.json` y `CLAUDE.md`.
 > Código leído de verdad: `Trustless-Work/trustlesswork-smart-contract-stellar`, ramas `single-release-develop` (commit `f0b706eaf6e98aa83bf4f95df42857b5d4c8e847`) y `single-release-develop-v2` (commit `1d22d0c1b9c5788f4fd7184e42024bbe10303756`, 2026-09-29, `soroban-sdk 28.0.0`). Se leyeron los `src/` completos de las dos ramas, salvo los tests. También `paltalabs/defindex`: `apps/contracts/vault/src/lib.rs` (firmas de `deposit`, `withdraw` y `get_asset_amounts_per_shares`) y `public/testnet.contracts.json`.
 > Marcas: **[AD-n]** es una decisión de arquitectura. **[TW-v2]** indica código que se conserva del upstream y **[FORK]** código que se modifica o se añade. **[G1]** significa que entra en `docs/INTERFACES.md` antes de congelarlo. **[Q-n]** es una pregunta abierta.
-
----
-
-## 00. Decisión posterior: escrow propio, sin fork de Trustless Work (prevalece)
-
-**Decisión del equipo (2026-10-25):** el escrow se escribe **desde cero**. No se copia ni se modifica código de Trustless Work. Este apartado prevalece sobre el resto del documento donde choquen:
-
-| Dónde | Qué cambia |
-|---|---|
-| § 0 C-1, § 1, [AD-12], [AD-13] | **No aplican.** No hay rama base, ni plan B a v1, ni `NOTICE.md` de TW, ni cabeceras de origen, ni marcas `// FIANZAS:`. |
-| § 0 C-2, C-3, C-5…C-15 | Se mantienen: un contrato escrow por fianza desplegado por `FianzaFactory`, vault de DeFindex directo, configuración copiada a `Terms`, registro de estrategias, índices paginados, pausa en la factory, `soroban-sdk = "28.0.0"`. |
-| § 0 C-4, Q-16, R-8 | **Sin fee de TW.** Fuera `tw_fee_bps`, `tw_fee_receiver`, `Settlement.to_tw` y el término `tw` de `split()`. El único fee es `platform_fee_bps`, sobre el rendimiento. |
-| § 4 y § 5 | La estructura de módulos de § 4 se mantiene, pero **todo es código nuevo**: las marcas [TW-v2] y [FORK] no aplican. La tabla de § 5 se lee como la lista de piezas a escribir (`contract.rs`, `core/{escrow, approvals, dispute, stop_bond, timeout, settle}`, `validators`, `modules/{vault, split, fee}`, aritmética con `checked_*`, `storage/types.rs`, eventos `fz_*`, un único `EscrowError`), no como un diff. |
-| § 6.1 [AD-14] | Sustituido por "Roles de una fianza" en INTERFACES § 1. `Roles` y `get_roles()` se eliminan. El quórum de 2 (`Approvals { target: 2 }`) es lógica propia. |
-| § 10 (spike) | La fila "compilar el fork" se sustituye por: **esqueleto del escrow propio** (tipos, errores, constructor) compilado a `wasm32v1-none` con un test del constructor. El spike del quórum de 2 con cuentas contrato se mantiene sobre nuestra lógica. |
-| § 11, § 16 | Sin "copia del fork" ni "primero NOTICE". El pitch no dice "construido sobre Trustless Work". |
-| § 12 R-1, R-14; § 15 Q-17 | R-1 pasa a "código propio sin auditar". R-14 y Q-17 quedan **cerrados**. |
-
-Seguridad de esta versión: `.kiro/pipeline/security.md` § 13. Interfaces vigentes: `docs/INTERFACES.md`.
 
 ---
 

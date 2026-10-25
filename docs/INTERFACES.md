@@ -4,30 +4,32 @@
 
 Fuente: `.kiro/pipeline/architecture.md` § 6, con los ajustes de `.kiro/pipeline/security.md` § 13.6 ya aplicados. Si hay discrepancia, manda este archivo.
 
-Resumen: cada fianza es un contrato **escrow propio** (escrito desde cero, sin código de Trustless Work) creado por **`FianzaFactory`**. Al fondear, el escrow deposita la fianza en un vault de **DeFindex** (por defecto, Blend Fixed Pool USDC) y, al liquidar, la retira y la reparte con `split()`.
+Resumen: cada fianza es un contrato **escrow** (fork del Single-Release de Trustless Work) creado por **`FianzaFactory`**. Al fondear, el escrow deposita la fianza en un vault de **DeFindex** (por defecto, Blend Fixed Pool USDC) y, al liquidar, la retira y la reparte con `split()`.
 
 Convenciones: importes `i128` en la unidad mínima del token (7 decimales) y porcentajes en bps (10000 = 100 %). Constantes: `MAX_AMOUNT = 10^15`, `MAX_TERM_SECS = 3 × 365 × 86400`, `MAX_BATCH = 10`, `MAX_PAGE = 50`, `MAX_VIEWS = 25`.
 
-## 1. Roles de una fianza
+## 1. Correspondencia de roles de Trustless Work [AD-14]
 
-| Rol | Valor | Cómo se fija | Qué puede hacer y qué recibe |
+| Rol TW v2 | Valor en cada fianza | Cómo se fija | Nota |
 |---|---|---|---|
-| Casero (`landlord`) | dirección del casero | `create_fianza` | `cancel`, `approve_release`, `stop` (con bond). Recibe la deducción, su parte del rendimiento y el bond si la parada estaba justificada |
-| Inquilino (`tenant`) | dirección del inquilino | fijado al crear o por invitación en `fund_escrow` | `fund_escrow`, `approve_release`. Recibe principal − deducción + su parte del rendimiento |
-| Aprobaciones | quórum de 2: casero e inquilino, sin orden | `Approvals { target: 2 }` en el constructor | La segunda aprobación liquida |
-| Resolvers (`dispute_resolvers`) | `config.staff` (1–3 direcciones) | copia en `Terms` al crear | `assign_expert`, `record_report`, `resolve`. Cualquiera de ellos puede resolver; inmutable por fianza |
-| Tesorería (`treasury`) | `config.treasury` | copia en `Terms` | Recibe el fee de plataforma (del rendimiento) y el bond perdido |
-| Factory | contrato que despliega la fianza | constructor | **Sin poderes** sobre la fianza. El escrow solo la consulta al fondear (`funding_allowed`, `register_tenant`) |
-| Cualquiera | — | — | `claim_after_timeout`, `claim_after_review_timeout`, `extend_contract_ttl` y lecturas |
+| `approvers` (quórum `target = 2`) | `[landlord, tenant]` | `landlord` al crear; `tenant` se añade en `fund_escrow` | Liberación con las dos firmas, sin orden. **Alternativa con v1:** approver = casero (`approve`) y `release_signer` = inquilino (la 2.ª firma libera). |
+| `release_signers` | `= approvers` | — | La liberación se ejecuta dentro de la aprobación que alcanza el quórum (semántica de `approve_and_release_milestones`). |
+| `service_providers` | `[landlord]` | al crear | Obligatorio no vacío en v2. Sin milestones, no tiene funciones. |
+| `dispute_resolvers` | `config.staff` (1–3 direcciones) | copia en `Terms` al crear | Cualquiera de ellos puede resolver. Varias direcciones mitigan el staff ausente. Inmutable por fianza. |
+| `platform` | `config.treasury` | copia en `Terms` | Recibe `platform_fee` (del rendimiento) y el bond perdido. |
+| `receiver` | `tenant` | en `fund_escrow` | Principal − deducción + su parte del rendimiento. **Receptores adicionales del fork:** `landlord` (deducción + su parte + bond devuelto) y `tw_fee_receiver`. |
+| `admin` | dirección de la factory | constructor | **Sin poderes** en el escrow (no hay `update_escrow`). Solo identifica el origen. |
+| `observers` | `[]` | — | Las lecturas son públicas. |
+| (no existe en TW) | `claim_after_timeout`, `claim_after_review_timeout`, stop bond y vault | — | Extensiones del fork. |
 
 **Vinculación del inquilino invitado** (se mantiene [AD-3] y FR-2):
 1. El navegador del casero genera `code = getRandomValues(32 B)` e `invite_hash = sha256(code)`, y llama a `create_fianza(landlord, { tenant: None, invite_hash: Some(h), … })`.
 2. Enlace: `https://<dominio>/i/<id>#c=<base64url(code)>`. El **`id`** se resuelve a la dirección del escrow con `factory.escrow_of(id)`, nunca desde la URL (WEB-2 y WEB-11).
-3. El inquilino crea su passkey, lee `get_terms()`, ve las condiciones y la estrategia con su aviso de riesgo, y firma `fund_escrow(tenant, Some(code), expected_terms)`. Antes de pedir la passkey, el front comprueba que `terms.factory`, `terms.treasury`, `terms.dispute_resolvers`, `terms.strategy.vault` y `terms.platform_fee_bps` coinciden con `deployments/testnet.json`. Si no coinciden, no deja fondear (security WEB-14).
-4. El escrow comprueba `sha256(code) == invite_hash`, fija `tenant` y llama a `factory.register_tenant(id, tenant)`, que comprueba que el llamante es `escrow_of(id)` y añade el id al índice del inquilino.
+3. El inquilino crea su passkey, lee `get_terms()`, ve las condiciones y la estrategia con su aviso de riesgo, y firma `fund_escrow(tenant, Some(code), expected_terms)`. Antes de pedir la passkey, el front comprueba que `terms.factory`, `terms.treasury`, `terms.dispute_resolvers`, `terms.strategy.vault` y `terms.tw_fee_bps` coinciden con `deployments/testnet.json`. Si no coinciden, no deja fondear (security WEB-14).
+4. El escrow comprueba `sha256(code) == invite_hash`, fija `tenant`, `approvers += tenant` y llama a `factory.register_tenant(id, tenant)`, que comprueba que el llamante es `escrow_of(id)` y añade el id al índice del inquilino.
 5. Si el casero conoce la dirección (`tenant: Some(t)`, `invite_hash: None`), `fund_escrow` exige `tenant == t`. Exactamente uno de los dos debe estar presente.
 
-## 2. Contrato `escrow` (propio, P1)
+## 2. Contrato `escrow` (fork, P1)
 
 ### Tipos (`storage/types.rs`)
 ```rust
@@ -68,6 +70,8 @@ pub struct Terms {                // inmutable desde el constructor; el inquilin
     pub tenant_yield_bps: u32,
     pub strategy: Strategy,       // snapshot
     pub platform_fee_bps: u32,    // sobre el rendimiento
+    pub tw_fee_bps: u32,          // sobre el rendimiento (Q-16)
+    pub tw_fee_receiver: Option<Address>,
     pub treasury: Address,
     pub dispute_resolvers: Vec<Address>,
     pub timeout_secs: u64,
@@ -79,7 +83,7 @@ pub struct Terms {                // inmutable desde el constructor; el inquilin
 pub struct EscrowInit { pub terms: Terms, pub tenant: Option<Address>, pub invite_hash: Option<BytesN<32>> }
 
 #[contracttype] #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Approvals { pub target: u32, pub approval_count: u32, pub approved_by: Vec<Address> } // target = 2; sin duplicados
+pub struct Approvals { pub target: u32, pub approval_count: u32, pub approved_by: Vec<Address> } // = MilestoneApprovals (TW v2)
 
 #[contracttype] #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Dispute {
@@ -99,6 +103,7 @@ pub struct Settlement {
     pub to_tenant: i128,
     pub to_landlord: i128,
     pub to_treasury: i128,    // platform fee (NO incluye el bond)
+    pub to_tw: i128,          // fee de TW sobre el rendimiento
 }
 
 #[contracttype] #[derive(Clone, Debug, Eq, PartialEq)]
@@ -117,6 +122,13 @@ pub struct Escrow {
 }
 
 #[contracttype] #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Roles {                         // forma TW v2, calculada (no se almacena)
+    pub approvers: Vec<Address>, pub service_providers: Vec<Address>, pub platform: Address,
+    pub release_signers: Vec<Address>, pub dispute_resolvers: Vec<Address>,
+    pub receiver: Option<Address>, pub admin: Address, pub observers: Vec<Address>,
+}
+
+#[contracttype] #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EscrowView {
     pub data: Escrow,
     pub status: Status,         // EFECTIVO (Ending incluido)
@@ -130,7 +142,7 @@ pub struct EscrowView {
 
 | Función | `require_auth` | Precondiciones (error) | Estado |
 |---|---|---|---|
-| `__constructor(init: EscrowInit)` | — (solo la despliega la factory; ver R-3) | `amount ∈ (0, MAX_AMOUNT]`; `end_ts > now`; bps válidos; exactamente uno de `tenant`/`invite_hash`; `dispute_resolvers` 1–3 sin duplicados. Si falla: `panic_with_error!` | — → `Proposed`. `approvals = {target: 2, count: 0, by: []}` |
+| `__constructor(init: EscrowInit)` | — (solo la despliega la factory; ver R-3) | `amount ∈ (0, MAX_AMOUNT]`; `end_ts > now`; bps válidos; `platform_fee_bps + tw_fee_bps ≤ 10000`; exactamente uno de `tenant`/`invite_hash`; `dispute_resolvers` 1–3 sin duplicados; si `tw_fee_bps > 0`, hay `tw_fee_receiver`. Si falla: `panic_with_error!` | — → `Proposed`. `approvals = {target: 2, count: 0, by: []}` |
 | `cancel()` | `terms.landlord` | `Proposed` (BadStatus) | → `Cancelled` |
 | `fund_escrow(tenant: Address, invite_code: Option<BytesN<32>>, expected_terms: Terms) -> i128` (shares) | `tenant` (+ `token.transfer(tenant, escrow, amount)` anidado) | `Proposed`; `now < end_ts` (InvalidEndTs); `expected_terms == terms` (TermsMismatch); invitación (InvalidInvite) o `tenant == fijado` (NotParty); `tenant ≠ landlord` (SameParty); partes (InvalidParty); `factory.funding_allowed(strategy.id)` (Paused); transferencia medida `== amount` (InvalidAmount); shares > 0 (VaultError). Las llamadas a la factory (`funding_allowed`, `register_tenant`) van con `try_`: si fallan, FactoryCall | `Proposed` → `Active` |
 | `approve_release(approver: Address) -> Option<Settlement>` | `approver` | `approver ∈ {landlord, tenant}` (NotParty); almacenado `Active` (BadStatus); no aprobado ya (AlreadyApproved). Vale antes y después de `end_ts`, y también tras el plazo | `Active` → (al llegar a 2) `Settled`, `Approved` |
@@ -143,11 +155,12 @@ pub struct EscrowView {
 | `extend_contract_ttl()` | ninguna | — | instancia y código a `max_ttl` |
 | `get_escrow() -> Escrow` | — | — (sin llamadas externas) | lectura |
 | `get_terms() -> Terms` | — | — | lectura |
+| `get_roles() -> Roles` | — | forma TW v2 | lectura |
 | `get_view() -> EscrowView` | — | llama al vault con `try_` | lectura |
 | `accrued_yield() -> i128` | — | `max(preview − amount, 0)`; 0 si `NoYield`, sin fondos o con fallo | lectura |
 | `preview_settlement(deduction: i128) -> Settlement` | — | estado con fondos; mismo `split()` | lectura |
 
-**Superficie del contrato** (security N-2): el wasm del escrow exporta **exactamente** las funciones de esta tabla: ninguna de admin, de upgrade, de rescate ni de reparto libre a terceros. `scripts/` lo comprueba con `stellar contract info interface`.
+**Superficie del contrato** (security N-2): el wasm del escrow exporta **exactamente** las funciones de esta tabla. No queda ninguna función del upstream de TW (`tw_new_single_release_escrow`, `initialize_escrow`, `update_escrow`, `manage_milestones`, `release_funds`, `change_milestone_status`, `approve_milestones`, `approve_and_release_milestones`, `resolve_dispute`, `dispute_escrow`, `withdraw_remaining_funds`, `extend_contract_ttl(admin, …)`, `get_escrow_by_contract_id`, `get_multiple_escrow_balances`) ni ninguna de upgrade. `scripts/` lo comprueba con `stellar contract info interface`.
 
 **Bordes temporales complementarios** (CT-4 ampliado): `Ending ⇔ Active ∧ now ≥ end_ts`; `stop ⇔ now ≤ timeout_at`; `claim_after_timeout ⇔ now > timeout_at`; `resolve ⇔ now ≤ review_deadline`; `claim_after_review_timeout ⇔ now > review_deadline`. Para un mismo `now`, nunca pueden ejecutarse a la vez dos caminos que compitan.
 
@@ -185,9 +198,11 @@ pub enum EscrowError {
 #[contracttype] #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GlobalConfig {
     pub token: Address,                 // USDC del vault por defecto
-    pub treasury: Address,              // recibe el fee de plataforma y los bonds perdidos
+    pub treasury: Address,              // platform de TW
     pub staff: Vec<Address>,            // 1..=3 → dispute_resolvers de las fianzas NUEVAS
     pub platform_fee_bps: u32,          // demo 2000; ≤ 5000
+    pub tw_fee_bps: u32,                // MVP: 0 (no se cobra). Si TW lo acuerda: 30, solo sobre el rendimiento (Q-16)
+    pub tw_fee_receiver: Option<Address>,
     pub timeout_secs: u64,              // demo 120; prod 30 días; ≥ 60
     pub review_timeout_secs: u64,       // demo 300; prod 30 días; ≥ 60
     pub stop_bond_min: i128,            // demo 100_000_000 (10 USDC); 0..=MAX_AMOUNT
@@ -215,7 +230,7 @@ pub struct FianzaSummary { pub id: u64, pub escrow: Address, pub data: Escrow, p
 | Función | Auth | Precondiciones (error) | Efecto |
 |---|---|---|---|
 | `__constructor(admin, escrow_wasm_hash: BytesN<32>, config: GlobalConfig)` | — | config válida (InvalidConfig) | — |
-| `create_fianza(landlord: Address, p: FianzaParams) -> Created` | `landlord` | no pausada (Paused); estrategia existe (StrategyNotFound) y `enabled` (StrategyDisabled); `amount ∈ (0, MAX_AMOUNT]` (InvalidAmount); `now < end_ts ≤ now + MAX_TERM_SECS` (InvalidEndTs); `tenant_yield_bps ≤ 10000` (InvalidBps); exactamente uno de `tenant`/`invite_hash` (InvalidInvite); `landlord`/`tenant` ∉ {staff, treasury, factory, token, vault} (InvalidParty); `tenant ≠ landlord` (SameParty) | `id = next_id`; `salt = id` en 32 bytes big-endian; `deployer().with_current_contract(salt).deploy_v2(wasm_hash, (EscrowInit,))`; registra `Escrow(id)`, `IdOf(addr)` e índice del casero; evento `f_created` |
+| `create_fianza(landlord: Address, p: FianzaParams) -> Created` | `landlord` | no pausada (Paused); estrategia existe (StrategyNotFound) y `enabled` (StrategyDisabled); `amount ∈ (0, MAX_AMOUNT]` (InvalidAmount); `now < end_ts ≤ now + MAX_TERM_SECS` (InvalidEndTs); `tenant_yield_bps ≤ 10000` (InvalidBps); exactamente uno de `tenant`/`invite_hash` (InvalidInvite); `landlord`/`tenant` ∉ {staff, treasury, factory, token, vault, tw_fee_receiver} (InvalidParty); `tenant ≠ landlord` (SameParty) | `id = next_id`; `salt = id` en 32 bytes big-endian; `deployer().with_current_contract(salt).deploy_v2(wasm_hash, (EscrowInit,))`; registra `Escrow(id)`, `IdOf(addr)` e índice del casero; evento `f_created` |
 | `create_fianzas_batch(landlord, items: Vec<FianzaParams>) -> Vec<Created>` **[Could]** | `landlord` (una sola firma) | `1 ≤ len ≤ MAX_BATCH` (TooMany); cada item como arriba; atómica | N despliegues. El límite real lo mide el spike (§ 10) |
 | `register_tenant(id: u64, tenant: Address)` | **el escrow** (`escrow_of(id).require_auth()`, implícita al ser invocador directo) | `escrow_of(id)` existe (NotFound); el llamante es ese escrow (NotEscrow); no registrado (AlreadyRegistered) | índice del inquilino; evento `f_tenant` |
 | `funding_allowed(strategy_id: Symbol) -> bool` | — | — | `!paused ∧ strategy.enabled` |
@@ -250,29 +265,31 @@ pub enum FactoryError {
     AlreadyRegistered = 15, SameParty = 16, Arithmetic = 17,
 }
 ```
-Validación de `GlobalConfig`: `platform_fee_bps ≤ 5000`, `stop_bond_bps ≤ 2000`, `timeout_secs ≥ 60`, `review_timeout_secs ≥ 60`, `staff` de 1 a 3 sin duplicados, `treasury ∉ staff` y `staff`, `treasury` ≠ factory.
+Validación de `GlobalConfig`: `platform_fee_bps + tw_fee_bps ≤ 10000`, `platform_fee_bps ≤ 5000`, `stop_bond_bps ≤ 2000`, `timeout_secs ≥ 60`, `review_timeout_secs ≥ 60`, `staff` de 1 a 3 sin duplicados, `treasury ∉ staff`, `tw_fee_bps > 0 ⇒ tw_fee_receiver.is_some()` y `staff`, `treasury` ≠ factory.
 
 ## 4. Reparto (`modules/split`, puro) [AD-15]
 
 ```
-pre: amount > 0, total ≥ 0, 0 ≤ deduction, platform_bps ≤ 10000, tenant_bps ≤ 10000
+pre: amount > 0, total ≥ 0, 0 ≤ deduction, platform_bps + tw_bps ≤ 10000, tenant_bps ≤ 10000
 principal_back = min(total, amount)
 deduction      = min(deduction, principal_back)          // el recorte lo hace settle (CT-7); split lo exige
 yield          = max(total − amount, 0)                  // la pérdida se compensa PRIMERO con el rendimiento
+tw             = floor(yield × tw_bps / 10000)           // fee de TW: solo sobre el rendimiento; MVP tw_bps = 0 (Q-16)
 fee            = floor(yield × platform_bps / 10000)     // fee de plataforma: solo sobre el rendimiento
-net            = yield − fee
+net            = yield − tw − fee
 landlord_yield = floor(net × (10000 − tenant_bps) / 10000)
 tenant_yield   = net − landlord_yield                    // el resto del redondeo, al inquilino
 to_landlord    = deduction + landlord_yield
 to_tenant      = principal_back − deduction + tenant_yield   // un déficit de principal recae aquí (Q-13)
 to_treasury    = fee
-post: to_tenant + to_landlord + to_treasury == total   (si no, panic: es un bug)
+to_tw          = tw
+post: to_tenant + to_landlord + to_treasury + to_tw == total   (si no, panic: es un bug)
 ```
-- El fee de plataforma se calcula **sobre el rendimiento bruto**.
-- **El principal nunca paga fees.** Con `yield = 0`: `to_treasury = 0` y el inquilino recibe `amount − deduction` (AC-7).
+- Los dos fees se calculan **sobre el rendimiento bruto**, igual que TW los calcula sobre el bruto del escrow. Así el reparto conserva la forma "bruto − fee TW − fee plataforma = neto", pero aplicada solo al rendimiento.
+- **El principal nunca paga fees.** Con `yield = 0`: `to_treasury = to_tw = 0` y el inquilino recibe `amount − deduction` (AC-7).
 - El **bond** queda fuera de `Settlement` y se paga después (security 12.7).
 - `NoYield`: `total = amount` (principal líquido en el escrow) → `yield = 0`.
-- Matriz obligatoria (AC-1 ampliado): `tenant_bps ∈ {0, 5000, 10000}` × `deduction ∈ {0, parcial, amount}` × `vault ∈ {ganancia, pérdida < rendimiento, pérdida > rendimiento, pérdida total}` × `platform_bps ∈ {0, 2000, 5000}`.
+- Matriz obligatoria (AC-1 ampliado): `tenant_bps ∈ {0, 5000, 10000}` × `deduction ∈ {0, parcial, amount}` × `vault ∈ {ganancia, pérdida < rendimiento, pérdida > rendimiento, pérdida total}` × `tw_bps ∈ {0 (MVP), 30}`.
 
 ## 5. Subconjunto del vault de DeFindex (lo usa el escrow; lo implementa `mock-vault`)
 
@@ -309,7 +326,7 @@ fn balance(e: Env, id: Address) -> i128;
     { "id": "custody",   "kind": "noyield",  "vault": null, "risk": "noyield", "simulated": false, "default": false }
   ],
   "defindex": { "factory": "CDSCWE4GLNBYYTES2OCYDFQA2LLY4RBIAX6ZI32VSUXD7GO6HRPO4A32", "vaultWasmHash": "f345228d…" },
-  "admin": "G…", "staff": ["G…"], "treasury": "G…", "platformFeeBps": 2000,
+  "admin": "G…", "staff": ["G…"], "treasury": "G…", "twFeeBps": 0, "twFeeReceiver": null,
   "faucet": "G…", "readSource": "G…",
   "relayer": "https://channels.openzeppelin.com/testnet",
   "smartAccount": { "accountWasmHash": "…", "webauthnVerifier": "C… | null" },

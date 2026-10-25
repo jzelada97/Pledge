@@ -2,11 +2,11 @@
 
 Cada fase termina en una **puerta (gate)**. No se pasa de fase hasta cumplirla. Si una puerta se retrasa más de 1 hora, se recorta alcance (ver "Qué se recorta primero"), nunca se recortan los tests del contrato ni de la factory.
 
-Hora 0 = inicio de la hackatón. Arquitectura de referencia: `.kiro/pipeline/architecture.md` (v2: escrow propio por fianza + `FianzaFactory`; ver su apartado 00), § 10 (spike) y § 11 (orden por rol). Seguridad: `.kiro/pipeline/security.md` § 13.
+Hora 0 = inicio de la hackatón. Arquitectura de referencia: `.kiro/pipeline/architecture.md` (v2: fork de Trustless Work + `FianzaFactory`), § 10 (spike) y § 11 (orden por rol). Seguridad: `.kiro/pipeline/security.md` § 13.
 
 ```mermaid
 flowchart LR
-  G0[G0 Harness y esqueleto del escrow<br/>H1] --> G1[G1 Interfaces congeladas<br/>H2]
+  G0[G0 Harness y fork copiado<br/>H1] --> G1[G1 Interfaces congeladas<br/>H2]
   G1 --> G2[G2 Spikes decididos<br/>H3]
   G2 --> G3[G3 Camino feliz en testnet<br/>H12]
   G3 --> G4[G4 Flujo completo<br/>H22 · freeze]
@@ -40,20 +40,20 @@ Regla: **cada flecha tiene un mock** desde la hora 2. Nadie espera a otro rol pa
 
 ---
 
-## Fase 0 · Harness y esqueleto (H0–H1) → G0
+## Fase 0 · Harness y fork (H0–H1) → G0
 | Rol | Tareas |
 |---|---|
-| P1 | Setup. **H0:30:** esqueleto del **escrow propio** en `contracts/escrow/` (estructura de módulos de la arquitectura § 4: `types.rs`, `error.rs`, constructor con `EscrowInit`) y de `contracts/factory/`. `cargo build --target wasm32v1-none --release` y un test del constructor en verde. Medir el tamaño del wasm. |
-| P2 | Esqueleto del monorepo: workspace Cargo con `soroban-sdk = "28.0.0"` y perfil release optimizado para wasm, workspace pnpm. CI con el build del wasm del escrow **antes** de `cargo test -p factory`. Identidades del CLI (una por rol). |
+| P1 | Setup. **H0:30:** copiar `contracts/escrow/src/**` de TW `single-release-develop-v2` @ `1d22d0c1b9c5788f4fd7184e42024bbe10303756` a `contracts/escrow/`, con la cabecera de origen en cada archivo. `cargo build --target wasm32v1-none --release` y **tests upstream en verde** con nuestro toolchain. Medir el tamaño del wasm. `contracts/escrow/NOTICE.md` y `contracts/factory/NOTICE.md`. **No empujar código copiado hasta que `NOTICE.md` registre el permiso de TW** (el repo es público; security R-14). |
+| P2 | Esqueleto del monorepo: workspace Cargo con `soroban-sdk = "28.0.0"` y perfil release copiado de TW, workspace pnpm. CI con el build del wasm del escrow **antes** de `cargo test -p factory`. Identidades del CLI (una por rol). |
 | P3, P4 | Clonar, `node scripts/harness/setup.mjs P<n>`, instalar toolchain (Node 20+, pnpm, gh). Probar `/estado`. P4: esqueleto Next ×2. |
 | Todos | Acordar las dependencias npm y crates principales (P2 las instala de una vez para evitar choques en el lockfile). |
 
-**G0:** los 4 tienen `setup` hecho, `/estado` funciona, un PR de prueba de cada uno ha pasado la CI y el esqueleto del escrow compila a wasm.
+**G0:** los 4 tienen `setup` hecho, `/estado` funciona, un PR de prueba de cada uno ha pasado la CI y el fork compila en local (o se ha activado el plan B de H1:30).
 
 ## Fase 1 · Interfaces (H1–H2) → G1
 | Rol | Tareas |
 |---|---|
-| P1 | Con `/lock interfaces`: cerrar firmas, eventos y errores de escrow (§ 2) y factory (§ 3). Completar `types.rs` y `error.rs` y empezar `split` con su matriz. El wasm solo exporta las funciones de INTERFACES § 2 (security N-2). |
+| P1 | Con `/lock interfaces`: cerrar firmas, eventos y errores de escrow (§ 2) y factory (§ 3). Empezar el **recorte del fork** (quitar las funciones del upstream que lista INTERFACES § 2, security N-2), `types.rs`, `error.rs` y `split` con su matriz. |
 | P2 | Revisar § 5 (vault) y § 6 (`deployments/testnet.json`). Empezar `mock-vault` con la interfaz de DeFindex. |
 | P3 | Cerrar § 7–§ 9: API de `packages/wallet` y `packages/anchor`, `WalletErrorCode` y `RelayPolicy`. |
 | P4 | Pantallas en baja fidelidad: creación con selector de estrategia y aviso de riesgo, aceptación del inquilino, parada con bond, backoffice y presets de política. |
@@ -63,13 +63,13 @@ Regla: **cada flecha tiene un mock** desde la hora 2. Nadie espera a otro rol pa
 ## Fase 2 · Spikes (H0:30–H3) → G2
 | Hora | Rol | Spike | Criterio de éxito | Si falla |
 |---|---|---|---|---|
-| H0:30–H1:00 | P1 | **Esqueleto del escrow:** tipos, errores y constructor con `EscrowInit` compilan a `wasm32v1-none` | Compila y el test del constructor pasa | Se simplifican los tipos (sin `Strategy` completo en `Terms`) y se avisa en el check-in de H2 |
-| H1:00–H2:00 | P1 | **Quórum de 2:** con nuestra lógica, `Approvals { target: 2 }`; `fund_escrow` fija T; `approve_release(L)` y `approve_release(T)` liquidan. Con `Address::generate` **y** con una cuenta contrato (`__check_auth` real), sin `mock_all_auths` | Liquida solo en la 2.ª aprobación; la misma parte dos veces → `AlreadyApproved` | Dos booleanos (`landlord_approved`, `tenant_approved`) en lugar de `Approvals` |
+| H0:30–H1:30 | P1 | **Compilar el fork:** v2 @ `1d22d0c` con nuestro toolchain y tests upstream | Compila y los tests pasan | **H1:30:** se pasa a v1 `single-release-develop` @ `f0b706e` con approver = casero y `release_signer` = inquilino. Las interfaces no cambian |
+| H1:00–H2:00 | P1 | **Quórum de 2:** con el fork recortado, `approvers = [L]` y `target = 2`; `fund_escrow` añade T; `approve_release(L)` y `approve_release(T)` liquidan. Con `Address::generate` **y** con una cuenta contrato (`__check_auth` real), sin `mock_all_auths` | Liquida solo en la 2.ª aprobación; la misma parte dos veces → `AlreadyApproved` | Lógica de quórum propia (≈30 líneas) en `milestone.rs` |
 | H1:00–H3:00 | P2 | **Depositar desde un contrato en el vault de testnet:** (1) `get_assets()`, `get_fees()` y estado de `usdc_paltalabs_vault`; (2) contrato mínimo que hace `deposit([10 USDC],[10 USDC],self,true)` con `authorize_as_current_contract` exacto, mide `balance(self)` y hace `withdraw(shares,[0],self)` midiendo el token; (3) `get_asset_amounts_per_shares`; (4) coste en CPU y footprint | Shares > 0, retiro ≥ depositado − redondeo, sin auth extra | (a) Vault propio con la factory de DeFindex sobre `USDC_blend_strategy` y depósito semilla; (b) en H3, demo con `usdc_mock` (recorte 4) y `yield-adapter` sobre Blend como plan C |
 | H2:00–H3:00 | P1 | **Factory mínima:** `create_fianza` despliega el wasm del escrow con `EscrowInit` y `escrow_of(id)` lo devuelve. Medir cuántos despliegues caben en una transacción en testnet | Despliega e inicializa en una llamada | `MAX_BATCH` según la medida, o se recorta el lote (recorte 0) |
 | H1–H3 | P3 | **Passkeys contra una instancia de la factory:** passkey → C-address → `{func, auth}` → Channels, firmando `fund_escrow` con su `token.transfer` anidado y sin XLM. Comprobación del wasm hash por `getLedgerEntries`. Probar SEP-45 contra testanchor | La C-address firma `fund_escrow` sin XLM | Kit alternativo (`passkey-kit`) y, para el anchor, ramp simulado (recorte 1) |
 
-**G2 (H3):** en `docs/DECISIONS.md`: vault de testnet (`usdc_paltalabs_vault`, propio o `usdc_mock`), `MAX_BATCH` medido, kit de passkeys y modo del anchor (SEP-24 o simulado).
+**G2 (H3):** en `docs/DECISIONS.md`: base del fork (v2 o v1), vault de testnet (`usdc_paltalabs_vault`, propio o `usdc_mock`), `MAX_BATCH` medido, kit de passkeys y modo del anchor (SEP-24 o simulado).
 
 ## Fase 3a · Firmas completas y primer despliegue (H3–H5)
 | Rol | Entregables |
@@ -83,7 +83,7 @@ Regla: **cada flecha tiene un mock** desde la hora 2. Nadie espera a otro rol pa
 | Rol | Entregables |
 |---|---|
 | P1 | `fund_escrow` (invitación, `expected_terms`, vault, `register_tenant` con `try_`), `approve_release` + `settle` + `split`, `cancel`, lecturas, `funding_allowed`. Tests de auth y de estado, test con cuenta contrato y tests de la factory (security 13.5). |
-| P2 | `fund.mjs` (trustline de la tesorería, faucet, reserva del mock, bond de los caseros demo). `e2e/happy.mjs`. |
+| P2 | `fund.mjs` (trustlines de la tesorería y del receptor del fee de TW, faucet, reserva del mock, bond de los caseros demo). `e2e/happy.mjs`. |
 | P3 | `createWallet` real con passkeys y Relayer. |
 | P4 | Panel del casero (lista paginada + precio por share), creación con estrategia y preset, flujo del inquilino con la comprobación WEB-14. |
 
@@ -115,17 +115,17 @@ Turnos de descanso de 2 en 2: **P1+P3** descansan en H12–H14 y **P2+P4** en H1
 ## Fase 7 · Pulido y entrega (H22–H28) → G5
 | Rol | Entregables |
 |---|---|
-| P1 | Checklist de seguridad del contrato **y de la factory** (`contracts/escrow/CLAUDE.md` + security § 13). |
-| P2 | README con diagrama, direcciones de contratos y cómo reproducir la demo. |
+| P1 | Checklist de seguridad del contrato **y de la factory** (`contracts/escrow/CLAUDE.md` + security § 13). `NOTICE.md` final. |
+| P2 | README con diagrama, direcciones de contratos, cómo reproducir la demo y enlace a los NOTICE. |
 | P3 | Cuentas demo preparadas en dos móviles. |
-| P4 | Slides, guion y vídeo de respaldo. |
+| P4 | Slides ("construido sobre Trustless Work, con su permiso"), guion y vídeo de respaldo. |
 | Todos | Dos ensayos completos de la demo (H24 y H26). |
 
 **G5:** entrega enviada antes de H28 con repo público, vídeo y slides.
 
 ---
 
-**Carga de P1:** es el rol más cargado (escrow + factory). Como P2 ya no construye `yield-adapter`, P2 asume todos los e2e y puede proponer tests de la factory con la etiqueta `cross-area` y la aprobación de P1.
+**Carga de P1:** es el rol más cargado (fork + factory). Como P2 ya no construye `yield-adapter`, P2 asume todos los e2e y puede proponer tests de la factory con la etiqueta `cross-area` y la aprobación de P1.
 
 ## Rituales
 - **Check-in cada 2 h** (H2, H4, H6…), 5 minutos: cada uno dice qué ha fusionado, qué le bloquea y qué fusiona en las próximas 2 h. Se mira `/estado`.
