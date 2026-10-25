@@ -1,0 +1,30 @@
+# Workspace Cargo de los contratos Soroban. Área `deps` (P2): editar con /lock deps.
+# Los perfiles están copiados del Cargo.toml raíz de Trustless Work @ 1d22d0c.
+
+[workspace]
+resolver = "2"
+# Se añaden contracts/factory y contracts/mock-vault cuando tengan Cargo.toml.
+members = ["contracts/escrow"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace.dependencies]
+soroban-sdk = "28.0.0"
+soroban-token-sdk = "28.0.0"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true
