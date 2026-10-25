@@ -1,70 +1,37 @@
-// Ampliación de DeFindex que Trustless Work va a añadir a su API v2 actual. Todavía no existe:
-// todo lo que suponemos de ella vive SOLO en este archivo. Cuando TW la publique, se ajustan
-// estos tipos y funciones (y sus tests) y el resto del paquete no cambia.
-import type { DeployV2Body, SingleReleaseV2Escrow } from "./types";
+// Rendimiento de la fianza en el vault de DeFindex de Trustless Work. Ya no hay supuestos: el
+// escrow deposita al fondear y `GET /escrow/single-release/vault-position` da su valor actual.
+import type { VaultPosition } from "./types";
 import { fromDecimal } from "./units";
 
-const MAX_BPS = 10_000;
+/** Vault de DeFindex que usa la API si el deploy no manda `vault` (testnet). */
+export const TW_VAULT_TESTNET = "CCG3G4YUO3FOPCTZXDSXOB3VXLOWVW3G5FB6RJNB45TYQ34SBS7TS7ZJ";
+/** wasm del escrow single-release con vault (testnet), para la RelayPolicy de packages/wallet. */
+export const TW_ESCROW_WASM_TESTNET = "828ae58429c6bf7a2da16784d89871f11e07fd7a82326de7f0817c80c02e4b95";
+/** Dirección que cobra la comisión de TW en testnet (segundo argumento de release_funds). */
+export const TW_FEE_ADDRESS_TESTNET = "GBPUACN7QETR4TCYTKINBDHTYTFXD3BQQV7VSMZC5CX74E4MTUL2AMUB";
+/** Comisión de Trustless Work: 0,3 % sobre todo lo retirado (capital + rendimiento). */
+export const TW_FEE_BPS = 30;
 
-/** Cómo queremos que rinda y se reparta la fianza (lo decide nuestra plataforma). */
-export interface DefindexStrategy {
-  /** Vault de DeFindex (`C…`) de nuestro registro de estrategias. */
-  vault: string;
-  /** Comisión de la plataforma sobre el rendimiento, en bps (demo: 2000). */
-  platformYieldFeeBps: number;
-  /** Parte del rendimiento neto para el inquilino según la jurisdicción (Portugal: 0). */
-  tenantYieldBps: number;
+const BPS = 10_000n;
+
+/**
+ * Rendimiento acumulado en unidad mínima: valor en el vault menos lo fondeado. Justo después de
+ * fondear puede salir -1 stroop por el redondeo del vault; se devuelve 0.
+ */
+export function accruedYield(position: VaultPosition, funded: bigint): bigint {
+  const diff = fromDecimal(position.underlying) - funded;
+  return diff > 0n ? diff : 0n;
 }
 
-// SUPUESTO: el despliegue acepta un objeto `defindex` de primer nivel con el vault y el
-// reparto del rendimiento entre los roles del escrow (receiver = inquilino, serviceProvider
-// = casero, platform = tesorería). El principal siempre vuelve entero al receiver.
-export interface DefindexDeployExtension {
-  defindex: {
-    vaultContractId: string;
-    yieldDistribution: { platformBps: number; receiverBps: number; serviceProviderBps: number };
-  };
-}
-
-export type DeployWithDefindex = DeployV2Body & DefindexDeployExtension;
-
-/** Añade la ampliación de DeFindex al cuerpo de despliegue. */
-export function withDefindex(body: DeployV2Body, s: DefindexStrategy): DeployWithDefindex {
-  for (const [name, bps] of [
-    ["platformYieldFeeBps", s.platformYieldFeeBps],
-    ["tenantYieldBps", s.tenantYieldBps],
-  ] as const) {
-    if (!Number.isInteger(bps) || bps < 0 || bps > MAX_BPS) {
-      throw new RangeError(`${name} fuera de rango (0–10000): ${bps}`);
-    }
+/**
+ * Lo que cobra el receptor al liberar un total retirado (unidad mínima), descontando la comisión de
+ * TW y la de la plataforma (`platformFee` en %). Sirve para mostrar el importe esperado.
+ */
+export function expectedPayout(total: bigint, platformFeePercent: number): bigint {
+  if (!Number.isInteger(platformFeePercent) || platformFeePercent < 0 || platformFeePercent > 99) {
+    throw new RangeError(`platformFee fuera de rango (0–99): ${platformFeePercent}`);
   }
-  if (!/^C[A-Z2-7]{55}$/.test(s.vault)) throw new RangeError(`Vault no válido: ${s.vault}`);
-  // El neto (rendimiento − comisión) se reparte entre inquilino y casero; los tres suman 10000.
-  const net = MAX_BPS - s.platformYieldFeeBps;
-  const receiverBps = Math.floor((net * s.tenantYieldBps) / MAX_BPS);
-  return {
-    ...body,
-    defindex: {
-      vaultContractId: s.vault,
-      yieldDistribution: {
-        platformBps: s.platformYieldFeeBps,
-        receiverBps,
-        serviceProviderBps: net - receiverBps,
-      },
-    },
-  };
-}
-
-// SUPUESTO: la respuesta de `GET /escrow/single-release/v2/{contractId}` añadirá un objeto
-// `defindex` con el vault y el rendimiento acumulado en decimales.
-export interface DefindexEscrowInfo {
-  vaultContractId: string;
-  accruedYield: number;
-}
-
-/** Rendimiento acumulado en unidad mínima, o `null` si el escrow no rinde (o TW aún no lo da). */
-export function accruedYield(escrow: SingleReleaseV2Escrow): bigint | null {
-  const info = (escrow as SingleReleaseV2Escrow & { defindex?: DefindexEscrowInfo }).defindex;
-  if (!info || typeof info.accruedYield !== "number") return null;
-  return fromDecimal(info.accruedYield);
+  const twFee = (total * BigInt(TW_FEE_BPS)) / BPS;
+  const platform = (total * BigInt(platformFeePercent) * 100n) / BPS;
+  return total - twFee - platform;
 }

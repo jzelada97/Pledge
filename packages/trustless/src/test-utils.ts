@@ -1,59 +1,40 @@
 // Datos de prueba compartidos por los tests.
 import type { FianzaParties } from "./fianza";
-import type { SingleReleaseV2Escrow } from "./types";
+import type { Escrow } from "./types";
 
 // Direcciones con formato válido (no son cuentas reales).
 export const LANDLORD = "GLANDLORD".padEnd(56, "A");
-export const TENANT = "GTENANT".padEnd(56, "B");
+export const TENANT = "CTENANT".padEnd(56, "B"); // passkey
 export const TREASURY = "GTREASURY".padEnd(56, "C");
 export const STAFF = "GSTAFF".padEnd(56, "D");
-export const ADMIN = "GADMIN".padEnd(56, "E");
-export const USDC = "CUSDC".padEnd(56, "F");
-export const VAULT = "CDKNUOYYDNSHVOKVT7XNQAYUQ7U4OGNJ4Z5DGXY5QW6AIYG6VUPKDOQO";
+export const ISSUER = "GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56";
 export const ESCROW_ID = "CESCROW".padEnd(56, "G");
 
-export const parties: FianzaParties = {
-  landlord: LANDLORD,
-  tenant: TENANT,
-  treasury: TREASURY,
-  staff: [STAFF],
-  admin: ADMIN,
-};
+export const parties: FianzaParties = { landlord: LANDLORD, tenant: TENANT, treasury: TREASURY, staff: STAFF };
 
-/** Escrow de TW tal y como lo devuelve `GET …/v2/{contractId}`, con ajustes. */
-export function escrowFixture(over: Partial<SingleReleaseV2Escrow> = {}): SingleReleaseV2Escrow {
+/** Escrow tal y como lo devuelve `GET /helper/get-escrow-by-contract-ids`, con ajustes. */
+export function escrowFixture(over: Partial<Escrow> = {}): Escrow {
   return {
-    type: "single-release-v2",
     contractId: ESCROW_ID,
-    contractBaseId: "base",
+    type: "single-release",
+    vault: "CCG3G4YUO3FOPCTZXDSXOB3VXLOWVW3G5FB6RJNB45TYQ34SBS7TS7ZJ",
     engagementId: "fianza-1",
     title: "Fianza 1",
     description: "Fianza de habitación",
     amount: 500,
-    balance: 500,
+    balance: 500.0000893,
     platformFee: 0,
-    receiverMemo: 0,
-    trustline: { contractId: USDC },
     roles: {
-      approvers: [LANDLORD, TENANT],
-      serviceProviders: [LANDLORD],
-      platform: TREASURY,
-      releaseSigners: [LANDLORD, TENANT],
-      disputeResolvers: [STAFF],
+      approver: LANDLORD,
+      serviceProvider: LANDLORD,
+      platformAddress: TREASURY,
+      releaseSigner: TENANT,
+      disputeResolver: STAFF,
       receiver: TENANT,
-      admin: ADMIN,
-      observers: [],
     },
-    milestones: [
-      {
-        description: "Devolución de la fianza",
-        status: "pending",
-        evidence: "",
-        approvals: { target: 2, approvalCount: 0, approvedBy: [] },
-      },
-    ],
-    dispute: { isDisputed: false, reason: "", resolved: false },
-    released: false,
+    flags: { disputed: false, released: false, resolved: false },
+    trustline: { symbol: "USDC", address: ISSUER },
+    milestones: [{ description: "Devolución de la fianza", status: "pending", evidence: "", approved: false }],
     ...over,
   };
 }

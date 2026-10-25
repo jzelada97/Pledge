@@ -4,23 +4,14 @@ import {
   buildDeployBody,
   buildResolveBody,
   buildStopBody,
+  buildWithdrawYieldBody,
   fianzaStatus,
   FianzaError,
+  isContractAddress,
   planApproveRelease,
   validateParties,
 } from "./fianza";
-import {
-  ADMIN,
-  escrowFixture,
-  ESCROW_ID,
-  LANDLORD,
-  parties,
-  STAFF,
-  TENANT,
-  TREASURY,
-  USDC,
-  VAULT,
-} from "./test-utils";
+import { escrowFixture, ESCROW_ID, ISSUER, LANDLORD, parties, STAFF, TENANT, TREASURY } from "./test-utils";
 
 const code = (fn: () => unknown) => {
   try {
@@ -31,150 +22,93 @@ const code = (fn: () => unknown) => {
   return "OK";
 };
 
-describe("buildDeployBody", () => {
-  it("mapea la fianza a un escrow v2 con quórum de 2", () => {
-    const body = buildDeployBody({
-      fianzaId: 7,
-      parties,
-      amount: 5_000_000_000n,
-      asset: { contractId: USDC },
-    });
+const approvedMilestone = [{ description: "Devolución de la fianza", status: "pending", evidence: "", approved: true }];
 
+describe("buildDeployBody", () => {
+  it("mapea la fianza a roles v1: casero aprueba, inquilino libera y cobra", () => {
+    const body = buildDeployBody({ fianzaId: 7, parties, amount: 5_000_000_000n, assetIssuer: ISSUER });
     expect(body).toEqual({
-      signer: TENANT,
+      signer: TREASURY,
       engagementId: "fianza-7",
       title: "Fianza 7",
       description: "Fianza de habitación",
       roles: {
-        approvers: [LANDLORD, TENANT],
-        serviceProviders: [LANDLORD],
-        platform: TREASURY,
-        releaseSigners: [LANDLORD, TENANT],
-        disputeResolvers: [STAFF],
+        approver: LANDLORD,
+        serviceProvider: LANDLORD,
+        platformAddress: TREASURY,
+        releaseSigner: TENANT,
+        disputeResolver: STAFF,
         receiver: TENANT,
-        admin: ADMIN,
-        observers: [],
       },
       amount: 500,
       platformFee: 0,
-      milestones: [{ description: "Devolución de la fianza", approvalsTarget: 2 }],
-      trustline: { contractId: USDC },
+      milestones: [{ description: "Devolución de la fianza" }],
+      trustline: { symbol: "USDC", address: ISSUER },
     });
-    expect("defindex" in body).toBe(false);
   });
 
-  it("añade DeFindex solo si se pide", () => {
-    const body = buildDeployBody({
-      fianzaId: 1,
-      parties,
-      amount: 1n,
-      asset: { contractId: USDC },
-      defindex: { vault: VAULT, platformYieldFeeBps: 2_000, tenantYieldBps: 0 },
-    });
-    expect(body).toMatchObject({ defindex: { vaultContractId: VAULT } });
+  it("solo manda `vault` si se pide uno", () => {
+    const vault = "CVAULT".padEnd(56, "V");
+    expect(buildDeployBody({ fianzaId: 1, parties, amount: 1n, assetIssuer: ISSUER, vault }).vault).toBe(vault);
   });
 
-  it("rechaza importes no positivos", () => {
-    expect(code(() => buildDeployBody({ fianzaId: 1, parties, amount: 0n, asset: {} }))).toBe(
-      "INVALID_AMOUNT",
-    );
-  });
-});
-
-describe("validateParties", () => {
-  it.each([
-    ["casero = inquilino", { tenant: LANDLORD }],
-    ["staff vacío", { staff: [] }],
-    ["más de 5 staff", { staff: ["1", "2", "3", "4", "5", "6"] }],
-    ["staff repetido", { staff: [STAFF, STAFF] }],
-    ["staff = casero", { staff: [LANDLORD] }],
-    ["staff = inquilino", { staff: [TENANT] }],
-    ["staff = tesorería", { staff: [TREASURY] }],
-    ["admin = casero", { admin: LANDLORD }],
-    ["admin = staff", { admin: STAFF }],
-    ["admin = tesorería", { admin: TREASURY }],
-  ])("rechaza %s", (_name, change) => {
-    expect(code(() => validateParties({ ...parties, ...change }))).toBe("INVALID_PARTIES");
-  });
-
-  it("acepta un reparto válido", () => {
-    expect(code(() => validateParties(parties))).toBe("OK");
+  it("rechaza importes y roles no válidos", () => {
+    expect(code(() => buildDeployBody({ fianzaId: 1, parties, amount: 0n, assetIssuer: ISSUER }))).toBe("INVALID_AMOUNT");
+    expect(code(() => validateParties({ ...parties, tenant: LANDLORD }))).toBe("INVALID_PARTIES");
+    expect(code(() => validateParties({ ...parties, staff: LANDLORD }))).toBe("INVALID_PARTIES");
+    expect(code(() => validateParties({ ...parties, staff: TREASURY }))).toBe("INVALID_PARTIES");
+    expect(code(() => validateParties({ ...parties, treasury: TENANT }))).toBe("INVALID_PARTIES");
   });
 });
 
 describe("fianzaStatus", () => {
-  it("deriva el estado del escrow de TW", () => {
+  it("deriva el estado de los flags y del saldo", () => {
     expect(fianzaStatus(escrowFixture({ balance: 0 }))).toBe("Proposed");
-    expect(fianzaStatus(escrowFixture())).toBe("Active");
-    expect(
-      fianzaStatus(escrowFixture({ dispute: { isDisputed: true, reason: "h", resolved: false } })),
-    ).toBe("Stopped");
-    expect(fianzaStatus(escrowFixture({ released: true }))).toBe("Settled");
-    expect(
-      fianzaStatus(escrowFixture({ dispute: { isDisputed: true, reason: "h", resolved: true } })),
-    ).toBe("Settled");
+    expect(fianzaStatus(escrowFixture({ balance: 499.9999999 }))).toBe("Active"); // redondeo del vault
+    expect(fianzaStatus(escrowFixture({ flags: { disputed: true, released: false, resolved: false } }))).toBe("Stopped");
+    expect(fianzaStatus(escrowFixture({ flags: { disputed: false, released: true, resolved: false } }))).toBe("Settled");
+    expect(fianzaStatus(escrowFixture({ flags: { disputed: true, released: false, resolved: true } }))).toBe("Settled");
   });
 });
 
 describe("planApproveRelease", () => {
-  it("la primera aprobación solo aprueba", () => {
-    const action = planApproveRelease(escrowFixture(), LANDLORD);
-    expect(action).toEqual({
+  it("primero aprueba el casero; después libera el inquilino", () => {
+    expect(planApproveRelease(escrowFixture(), LANDLORD)).toEqual({
       kind: "approve",
-      body: { contractId: ESCROW_ID, approver: LANDLORD, milestoneIndexes: [0] },
+      body: { contractId: ESCROW_ID, milestoneIndex: "0", approver: LANDLORD },
     });
+    expect(code(() => planApproveRelease(escrowFixture(), TENANT))).toBe("NOT_APPROVED");
+    const approved = escrowFixture({ milestones: approvedMilestone });
+    expect(planApproveRelease(approved, TENANT)).toEqual({
+      kind: "release",
+      body: { contractId: ESCROW_ID, releaseSigner: TENANT },
+    });
+    expect(code(() => planApproveRelease(approved, LANDLORD))).toBe("ALREADY_APPROVED");
   });
 
-  it("la segunda aprueba y libera, en cualquier orden", () => {
-    for (const [first, second] of [
-      [LANDLORD, TENANT],
-      [TENANT, LANDLORD],
-    ]) {
-      const escrow = escrowFixture();
-      escrow.milestones[0].approvals = { target: 2, approvalCount: 1, approvedBy: [first] };
-      expect(planApproveRelease(escrow, second)).toEqual({
-        kind: "approve-and-release",
-        body: { contractId: ESCROW_ID, signer: second, milestoneIndexes: [0] },
-      });
-    }
-  });
-
-  it("rechaza estados y partes incorrectos", () => {
-    const approved = escrowFixture();
-    approved.milestones[0].approvals = { target: 2, approvalCount: 1, approvedBy: [TENANT] };
-    expect(code(() => planApproveRelease(approved, TENANT))).toBe("ALREADY_APPROVED");
+  it("rechaza terceros y estados que no admiten aprobar", () => {
     expect(code(() => planApproveRelease(escrowFixture(), STAFF))).toBe("NOT_PARTY");
-    expect(code(() => planApproveRelease(escrowFixture({ balance: 0 }), TENANT))).toBe("NOT_FUNDED");
-    expect(code(() => planApproveRelease(escrowFixture({ released: true }), TENANT))).toBe(
-      "ALREADY_SETTLED",
-    );
-    const stopped = escrowFixture({ dispute: { isDisputed: true, reason: "h", resolved: false } });
-    expect(code(() => planApproveRelease(stopped, TENANT))).toBe("DISPUTED");
+    expect(code(() => planApproveRelease(escrowFixture({ balance: 0 }), LANDLORD))).toBe("NOT_FUNDED");
+    expect(
+      code(() => planApproveRelease(escrowFixture({ flags: { disputed: true, released: false, resolved: false } }), LANDLORD)),
+    ).toBe("DISPUTED");
+    expect(
+      code(() => planApproveRelease(escrowFixture({ flags: { disputed: false, released: true, resolved: false } }), TENANT)),
+    ).toBe("ALREADY_SETTLED");
   });
 });
 
 describe("parar y resolver", () => {
-  const stopped = () =>
-    escrowFixture({ dispute: { isDisputed: true, reason: "hash", resolved: false } });
+  const stopped = escrowFixture({ flags: { disputed: true, released: false, resolved: false } });
 
-  it("solo el casero para una fianza activa", () => {
-    expect(buildStopBody(escrowFixture(), LANDLORD, "hash")).toEqual({
-      contractId: ESCROW_ID,
-      signer: LANDLORD,
-      reason: "hash",
-    });
-    expect(code(() => buildStopBody(escrowFixture(), TENANT, "hash"))).toBe("NOT_PARTY");
-    expect(code(() => buildStopBody(escrowFixture({ balance: 0 }), LANDLORD, "hash"))).toBe(
-      "NOT_FUNDED",
-    );
-    expect(code(() => buildStopBody(escrowFixture(), LANDLORD, "x".repeat(501)))).toBe(
-      "INVALID_REASON",
-    );
+  it("solo el casero para, y solo una fianza activa", () => {
+    expect(buildStopBody(escrowFixture(), LANDLORD)).toEqual({ contractId: ESCROW_ID, signer: LANDLORD });
+    expect(code(() => buildStopBody(escrowFixture(), TENANT))).toBe("NOT_PARTY");
+    expect(code(() => buildStopBody(escrowFixture({ balance: 0 }), LANDLORD))).toBe("NOT_FUNDED");
   });
 
-  it("la deducción va al casero y el resto al inquilino, sumando el saldo", () => {
-    const body = buildResolveBody(stopped(), STAFF, 1_000_000_000n); // 100 de 500
-    expect(body).toEqual({
+  it("resolver reparte el importe fondeado: deducción al casero, el resto al inquilino", () => {
+    expect(buildResolveBody(stopped, STAFF, 1_000_000_000n)).toEqual({
       contractId: ESCROW_ID,
       disputeResolver: STAFF,
       distributions: [
@@ -182,18 +116,27 @@ describe("parar y resolver", () => {
         { address: LANDLORD, amount: 100 },
       ],
     });
-  });
-
-  it("sin deducción todo vuelve al inquilino (sin transferencias de 0)", () => {
-    expect(buildResolveBody(stopped(), STAFF, 0n).distributions).toEqual([
-      { address: TENANT, amount: 500 },
-    ]);
-  });
-
-  it("valida resolver, estado y deducción", () => {
-    expect(code(() => buildResolveBody(stopped(), LANDLORD, 0n))).toBe("NOT_RESOLVER");
+    // Sin deducción no aparece el casero (no se transfieren importes 0).
+    expect(buildResolveBody(stopped, STAFF, 0n).distributions).toEqual([{ address: TENANT, amount: 500 }]);
+    expect(code(() => buildResolveBody(stopped, STAFF, 5_000_000_001n))).toBe("INVALID_AMOUNT");
+    expect(code(() => buildResolveBody(stopped, LANDLORD, 0n))).toBe("NOT_RESOLVER");
     expect(code(() => buildResolveBody(escrowFixture(), STAFF, 0n))).toBe("NOT_DISPUTED");
-    expect(code(() => buildResolveBody(stopped(), STAFF, -1n))).toBe("INVALID_AMOUNT");
-    expect(code(() => buildResolveBody(stopped(), STAFF, 5_000_000_001n))).toBe("INVALID_AMOUNT");
+  });
+
+  it("el rendimiento sobrante se reparte según la jurisdicción", () => {
+    expect(buildWithdrawYieldBody(stopped, STAFF, 893n, 5000).distributions).toEqual([
+      { address: TENANT, amount: 0.0000446 },
+      { address: LANDLORD, amount: 0.0000447 },
+    ]);
+    expect(buildWithdrawYieldBody(stopped, STAFF, 893n, 0).distributions).toEqual([{ address: LANDLORD, amount: 0.0000893 }]);
+    expect(() => buildWithdrawYieldBody(stopped, STAFF, 1n, 10_001)).toThrow(RangeError);
+    expect(code(() => buildWithdrawYieldBody(stopped, TENANT, 1n, 0))).toBe("NOT_RESOLVER");
+  });
+});
+
+describe("isContractAddress", () => {
+  it("distingue passkeys (C…) de cuentas clásicas (G…)", () => {
+    expect(isContractAddress(TENANT)).toBe(true);
+    expect(isContractAddress(LANDLORD)).toBe(false);
   });
 });
