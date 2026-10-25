@@ -204,7 +204,7 @@
 - **[IV-1] [H]** `create_fianza`:
   - `0 < amount ≤ MAX_AMOUNT`.
   - `now < end_ts ≤ now + MAX_TERM_SECS`.
-  - `tenant_yield_bps ≤ 10000`.
+  - `tenant_yield_bps` ya no es un parámetro: lo copia de `GlobalConfig` (IV-3, #16).
   - Exactamente uno de `tenant` o `invite_hash`.
   - La estrategia existe y está `enabled`.
   - `expected_config_version` coincide (N-14).
@@ -213,6 +213,7 @@
 - **[IV-3] [H]** `GlobalConfig`:
   - `platform_fee_bps ≤ 5000` y `platform_fee_bps + tw_fee_bps ≤ 10000`.
   - `stop_bond_bps ≤ 2000` y `0 ≤ stop_bond_min ≤ MAX_AMOUNT`.
+  - `tenant_yield_bps ≤ 10000` (reparto por jurisdicción, #16).
   - `timeout_secs ≥ 60` y `review_timeout_secs ≥ 60`.
   - `staff` de 1 a 3 sin duplicados; `treasury ∉ staff`; `staff`, `treasury` ≠ factory.
   - `tw_fee_bps > 0 ⇒ tw_fee_receiver`.
@@ -952,7 +953,7 @@ Convenciones de `cargo test`:
 | `salt_binds_landlord` | El mismo `nonce` con otro casero da otra dirección y no hay colisión | H |
 | `nonce_reuse_fails` | 2.º `create_fianza(L, n)` → `NonceUsed` | H |
 | `created_returns_wasm_hash` | `Created.wasm_hash == escrow_wasm_hash()` y el evento `f_created` lo incluye | H |
-| `create_validates_params` | Importe, `end_ts`, bps, invitación (los dos o ninguno), partes (`InvalidParty`/`SameParty`) | H |
+| `create_validates_params` | Importe, `end_ts`, invitación (los dos o ninguno), partes (`InvalidParty`/`SameParty`) | H |
 | `create_rejects_stale_config_version` | `set_config` entre lectura y creación → `ConfigChanged` | H |
 | `create_copies_config_snapshot_into_terms` | Los `Terms` tienen fees, plazos, resolvers, tesorería, bond (`compute_stop_bond`) y comisiones del vault | H |
 | `config_change_does_not_affect_existing` | Tras `set_config` y `set_escrow_wasm_hash`, los `Terms` y el wasm de las fianzas antiguas no cambian | H |
@@ -1433,7 +1434,7 @@ Sustituyen a los de la sección 3 donde choquen.
 - **[SRV-2/SRV-5 v2] [H]** La lista blanca es la `RelayPolicy` de INTERFACES § 8 (dirección fija de la factory más escrows por wasm hash **y** registro), con N-3.
 - **[WEB-3 v2] [H]** La raíz del árbol de auth es la factory o un escrow con `factory.id_of(addr)` válido. Subinvocaciones esperadas: ninguna, salvo `fund_escrow` (`token.transfer(tenant, escrow, terms.amount)`) y `stop` (`token.transfer(landlord, escrow, terms.stop_bond)`).
 - **[WEB-11 v2] [H]** La pantalla de aceptación resuelve la dirección con `factory.escrow_of(id)` y muestra importe, `end_ts`, `timeout_at`, `review_timeout_secs`, `tenant_yield_bps`, `platform_fee_bps`, `stop_bond`, la estrategia con su `RiskTier` y quién resuelve, leyéndolo **solo** de `get_terms()`.
-- **[WEB-14] [H] (nuevo)** Antes de pedir la passkey para `fund_escrow`, el front comprueba que `terms.factory == deployments.factory`, `terms.treasury == deployments.treasury`, `terms.dispute_resolvers ⊆ deployments.staff`, `terms.strategy.vault` (si existe) está en `deployments.strategies` y `terms.tw_fee_bps == deployments.twFeeBps`. Si algo no coincide, no deja fondear y muestra "Estas condiciones no coinciden con las de la plataforma".
+- **[WEB-14] [H] (nuevo)** Antes de pedir la passkey para `fund_escrow`, el front comprueba que `terms.factory == deployments.factory`, `terms.treasury == deployments.treasury`, `terms.dispute_resolvers ⊆ deployments.staff`, `terms.strategy.vault` (si existe) está en `deployments.strategies` `terms.tw_fee_bps == deployments.twFeeBps` y `terms.tenant_yield_bps == deployments.tenantYieldBps` (#16). Si algo no coincide, no deja fondear y muestra "Estas condiciones no coinciden con las de la plataforma".
 
 ### A.5 Tests nuevos
 
@@ -1444,7 +1445,7 @@ Prioridad [H] salvo indicación. Se suman a las secciones 5 y 12.9, que se adapt
 | Test | Escenario |
 |---|---|
 | `create_requires_landlord_auth` | Sin auth del casero → falla; `count()` no cambia |
-| `create_validates_params` | Un caso por error: `InvalidAmount`, `InvalidEndTs`, `InvalidBps`, `InvalidInvite` (ninguno o los dos), `InvalidParty`, `SameParty`, `StrategyNotFound`, `StrategyDisabled`, `Paused` |
+| `create_validates_params` | Un caso por error: `InvalidAmount`, `InvalidEndTs`, `InvalidInvite` (ninguno o los dos), `InvalidParty`, `SameParty`, `StrategyNotFound`, `StrategyDisabled`, `Paused` |
 | `create_snapshots_config` | `set_config` después de crear → `get_terms()` de la fianza existente no cambia; una fianza nueva sí recibe la configuración nueva |
 | `set_wasm_hash_only_affects_new` | Las fianzas existentes conservan su wasm; las nuevas usan el nuevo |
 | `deploy_is_deterministic_and_constructor_runs_once` | `escrow_of(id)` coincide con la dirección derivada de `salt = id`; volver a invocar `__constructor` falla |
