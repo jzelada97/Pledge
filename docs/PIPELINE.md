@@ -44,7 +44,7 @@ Regla: **cada flecha tiene un mock** desde la hora 2. Nadie espera a otro rol pa
 | Rol | Tareas |
 |---|---|
 | P1 | Setup. **H0:30:** copiar `contracts/escrow/src/**` de TW `single-release-develop-v2` @ `1d22d0c1b9c5788f4fd7184e42024bbe10303756` a `contracts/escrow/`, con la cabecera de origen en cada archivo. `cargo build --target wasm32v1-none --release` y **tests upstream en verde** con nuestro toolchain. Medir el tamaño del wasm. `contracts/escrow/NOTICE.md` y `contracts/factory/NOTICE.md`. **No empujar código copiado hasta que `NOTICE.md` registre el permiso de TW** (el repo es público; security R-14). |
-| P2 | Esqueleto del monorepo: workspace Cargo con `soroban-sdk = "28.0.0"` y perfil release copiado de TW, workspace pnpm. CI con el build del wasm del escrow **antes** de `cargo test -p factory`. Identidades del CLI (una por rol). |
+| P2 | Esqueleto del monorepo: workspace Cargo con `soroban-sdk = "28.0.0"` y perfil release copiado de TW, workspace pnpm. CI con el build del wasm del escrow **antes** de `cargo test -p factory`. Identidades del CLI (una por rol). PR de `harness/team.json` con el área `api` (ya incluido en este PR). |
 | P3, P4 | Clonar, `node scripts/harness/setup.mjs P<n>`, instalar toolchain (Node 20+, pnpm, gh). Probar `/estado`. P4: esqueleto Next ×2. |
 | Todos | Acordar las dependencias npm y crates principales (P2 las instala de una vez para evitar choques en el lockfile). |
 
@@ -54,7 +54,7 @@ Regla: **cada flecha tiene un mock** desde la hora 2. Nadie espera a otro rol pa
 | Rol | Tareas |
 |---|---|
 | P1 | Con `/lock interfaces`: cerrar firmas, eventos y errores de escrow (§ 2) y factory (§ 3). Empezar el **recorte del fork** (quitar las funciones del upstream que lista INTERFACES § 2, security N-2), `types.rs`, `error.rs` y `split` con su matriz. |
-| P2 | Revisar § 5 (vault) y § 6 (`deployments/testnet.json`). Empezar `mock-vault` con la interfaz de DeFindex. |
+| P2 | Revisar § 5 (vault) y § 6 (`deployments/testnet.json`). Empezar `mock-vault` con la interfaz de DeFindex. Lleva la sección API (INTERFACES § 8) al `/lock interfaces`. |
 | P3 | Cerrar § 7–§ 9: API de `packages/wallet` y `packages/anchor`, `WalletErrorCode` y `RelayPolicy`. |
 | P4 | Pantallas en baja fidelidad: creación con selector de estrategia y aviso de riesgo, aceptación del inquilino, parada con bond, backoffice y presets de política. |
 
@@ -69,13 +69,13 @@ Regla: **cada flecha tiene un mock** desde la hora 2. Nadie espera a otro rol pa
 | H2:00–H3:00 | P1 | **Factory mínima:** `create_fianza` despliega el wasm del escrow con `EscrowInit` y `escrow_of(id)` lo devuelve. Medir cuántos despliegues caben en una transacción en testnet | Despliega e inicializa en una llamada | `MAX_BATCH` según la medida, o se recorta el lote (recorte 0) |
 | H1–H3 | P3 | **Passkeys contra una instancia de la factory:** passkey → C-address → `{func, auth}` → Channels, firmando `fund_escrow` con su `token.transfer` anidado y sin XLM. Comprobación del wasm hash por `getLedgerEntries`. Probar SEP-45 contra testanchor | La C-address firma `fund_escrow` sin XLM | Kit alternativo (`passkey-kit`) y, para el anchor, ramp simulado (recorte 1) |
 
-**G2 (H3):** en `docs/DECISIONS.md`: base del fork (v2 o v1), vault de testnet (`usdc_paltalabs_vault`, propio o `usdc_mock`), `MAX_BATCH` medido, kit de passkeys y modo del anchor (SEP-24 o simulado).
+**G2 (H3):** en `docs/DECISIONS.md`: base del fork (v2 o v1), vault de testnet (**propio**; `usdc_paltalabs_vault` o `usdc_mock` como plan B), `MAX_BATCH` medido, kit de passkeys y modo del anchor (SEP-24 o simulado).
 
 ## Fase 3a · Firmas completas y primer despliegue (H3–H5)
 | Rol | Entregables |
 |---|---|
 | P1 | **Todas las firmas públicas** de escrow y factory compiladas (las de la fase 5 con cuerpo provisional `BadStatus`). Factory: config, registro de estrategias, índices paginados y `register_tenant`. |
-| P2 | `deploy.mjs`: sube el wasm del escrow → despliega la factory → `add_strategy` ×3 → `set_default_strategy`. Comprueba el hash del wasm importado por la factory (N-8), el SAC del token (N-4) y la superficie del wasm del escrow (N-2). `bindings.sh` (factory, escrow, token). **Primer despliegue en H5.** |
+| P2 | `deploy.mjs`: sube el wasm del escrow → despliega la factory → `add_strategy` ×3 → `set_default_strategy`. Comprueba el hash del wasm importado por la factory (N-8), el SAC del token (N-4) y la superficie del wasm del escrow (N-2). `bindings.sh` (factory, escrow, token). **Primer despliegue en H5.** **API:** esqueleto de `apps/api` (Hono, Problem Details, `/fianzas/v1/config`, `/stellar/send-transaction`) montado en `apps/web/app/api/[[...path]]/route.ts`, y las lecturas compatibles con TW (`GET /escrow/single-release/v2/{id}`, balances). **Vault propio de DeFindex en testnet** con la factory de DeFindex. |
 | P3 | `FakeWallet` y `FakeAnchor`. `createRelayHandler` con la `RelayPolicy` nueva (direcciones dinámicas y topes de N-3) y sus tests de XDR maliciosos. |
 | P4 | Bindings reales en cuanto lleguen (H5) y `SignButton`. |
 
@@ -83,7 +83,7 @@ Regla: **cada flecha tiene un mock** desde la hora 2. Nadie espera a otro rol pa
 | Rol | Entregables |
 |---|---|
 | P1 | `fund_escrow` (invitación, `expected_terms`, vault, `register_tenant` con `try_`), `approve_release` + `settle` + `split`, `cancel`, lecturas, `funding_allowed`. Tests de auth y de estado, test con cuenta contrato y tests de la factory (security 13.5). |
-| P2 | `fund.mjs` (trustlines de la tesorería y del receptor del fee de TW, faucet, reserva del mock, bond de los caseros demo). `e2e/happy.mjs`. |
+| P2 | `fund.mjs` (trustlines de la tesorería y del receptor del fee de TW, faucet, reserva del mock, bond de los caseros demo). `e2e/happy.mjs`. `e2e/happy.mjs` **a través de la API** (build → firma → send). API: `POST /fianzas/v1/fianzas` (crear vía factory), `fund` compatible con TW, `approve-milestones`, estrategias con APY y comisiones, preview y `/fianzas/v1/relay`. Exporta `@fianzas/api/client`. |
 | P3 | `createWallet` real con passkeys y Relayer. |
 | P4 | Panel del casero (lista paginada + precio por share), creación con estrategia y preset, flujo del inquilino con la comprobación WEB-14. |
 
@@ -98,7 +98,7 @@ Turnos de descanso de 2 en 2: **P1+P3** descansan en H12–H14 y **P2+P4** en H1
 | Rol | Entregables |
 |---|---|
 | P1 (H14–H16) | `stop` + bond, `assign_expert`, `record_report`, `resolve` con `stop_justified`, `claim_after_timeout`, `claim_after_review_timeout` y los tests de security § 12.9 y 13.5. |
-| P2 (H12–H14) | `e2e/stop.mjs` (los dos valores de `stop_justified`), `e2e/timeout.mjs`, `e2e/review-timeout.mjs` y cuenta de staff. |
+| P2 (H12–H14) | `e2e/stop.mjs` (los dos valores de `stop_justified`), `e2e/timeout.mjs`, `e2e/review-timeout.mjs` y cuenta de staff. API: `stop`, `assign-expert`, `record-report`, `resolve` y `claim-*` en `/fianzas/v1`; `dispute` y `resolve-dispute` de TW responden `501` con la ruta nueva. |
 | P3 (H14–H16) | Ramp simulado (o SEP-24 si pasó el spike). |
 | P4 (H12–H14) | Backoffice del staff con `stop_justified` explícito. |
 
@@ -106,7 +106,7 @@ Turnos de descanso de 2 en 2: **P1+P3** descansan en H12–H14 y **P2+P4** en H1
 | Rol | Entregables |
 |---|---|
 | P1 | `create_fianzas_batch` **(Could)**, bordes temporales y `evil_vault`. |
-| P2 | Redeploy final y AC-13 (despliegue completo en ≤ 10 min). |
+| P2 | Redeploy final y AC-13 (despliegue completo en ≤ 10 min). API: `/escrows*`, `/financial`, `/events`, API keys para integradores y prueba con `@trustless-work/escrow-js` cambiando la `baseUrl`. |
 | P3 | Robustez: errores de la wallet, reintentos y Relayer caído. |
 | P4 | Timeout y revisión vencida en la UI, feed de eventos filtrado por `contractId`, `check-copy.mjs`. |
 
@@ -126,6 +126,8 @@ Turnos de descanso de 2 en 2: **P1+P3** descansan en H12–H14 y **P2+P4** en H1
 ---
 
 **Carga de P1:** es el rol más cargado (fork + factory). Como P2 ya no construye `yield-adapter`, P2 asume todos los e2e y puede proponer tests de la factory con la etiqueta `cross-area` y la aprobación de P1.
+
+**Carga de P2:** la API son unas 6–8 h repartidas entre H2 y H22, cubiertas con las ~4 h que libera no construir `yield-adapter`. P1 no toca la API. P4 consume `@fianzas/api/client` y, hasta H5, `FakeWallet` y fixtures.
 
 ## Rituales
 - **Check-in cada 2 h** (H2, H4, H6…), 5 minutos: cada uno dice qué ha fusionado, qué le bloquea y qué fusiona en las próximas 2 h. Se mira `/estado`.

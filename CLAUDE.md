@@ -25,7 +25,7 @@ Hackatón de 28 horas, 4 personas, testnet.
 | Rol | Persona | Responsable de | Carpetas |
 |---|---|---|---|
 | P1 | Carlos · @CarlosJX7 | Escrow (fork de Trustless Work + DeFindex) y factory | `contracts/escrow/`, `contracts/factory/` |
-| P2 | Jose · @jzelada97 | DeFi + infra, **integrador** | `contracts/mock-vault/`, `contracts/yield-adapter/`, `packages/bindings/` (generado), `scripts/deploy|e2e|fund/`, `deployments/` |
+| P2 | Jose · @jzelada97 | DeFi + infra + **API compatible con Trustless Work**, **integrador** | `apps/api/` (y su montaje en `apps/web/app/api/`), `contracts/mock-vault/`, `contracts/yield-adapter/`, `packages/bindings/` (generado), `scripts/deploy|e2e|fund/`, `deployments/` |
 | P3 | Ricardo · @RicardoMatosR | Onboarding sin cripto | `packages/wallet/` (passkeys + Relayer), `packages/anchor/` (SEP-24/SEP-45) |
 | P4 | Diego · @Diego-Matoss | UX/UI + pitch | `apps/web/` (casero e inquilino), `apps/backoffice/` (staff), `pitch/` |
 | Compartido | Todos | Requiere **lock** | `docs/INTERFACES.md`, `.kiro/` (specs), `CLAUDE.md`, `NOTICE.md`, `harness/`, `.claude/`, `.github/`, archivos de configuración y dependencias en la raíz |
@@ -42,7 +42,7 @@ Hackatón de 28 horas, 4 personas, testnet.
 - Commits en formato **Conventional Commits con scope de área** (lo valida `.githooks/commit-msg`):
   `tipo(scope): descripción en imperativo, en español, ≤72 caracteres`
   - Tipos: `feat`, `fix`, `test`, `docs`, `refactor`, `chore`, `ci`, `perf`.
-  - Scopes: `escrow`, `factory`, `vault`, `adapter`, `bindings`, `scripts`, `wallet`, `anchor`, `web`, `backoffice`, `pitch`, `interfaces`, `harness`, `ci`, `deps`, `docs`.
+  - Scopes: `escrow`, `factory`, `api`, `vault`, `adapter`, `bindings`, `scripts`, `wallet`, `anchor`, `web`, `backoffice`, `pitch`, `interfaces`, `harness`, `ci`, `deps`, `docs`.
   - Cambio que rompe la interfaz: `feat(escrow)!: …` y una línea `BREAKING: …` en el cuerpo.
   - Enlaza el issue en el cuerpo: `Refs: #12`.
   - Ejemplo: `feat(escrow): añadir approve_release con doble aprobación`.
