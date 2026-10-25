@@ -9,7 +9,7 @@ crate-type = ["cdylib"]
 
 # Importa los tipos y el wasm del escrow con `contractimport!` desde
 # target/wasm32v1-none/release/escrow.wasm (raíz del workspace): compila el escrow
-# antes (`cargo build --release --target wasm32v1-none -p escrow`).
+# antes con `stellar contract build` (soroban-sdk 28 no admite `cargo build` a wasm).
 
 # Versiones y perfiles en el Cargo.toml raíz del workspace (área deps, P2).
 [dependencies]
