@@ -109,7 +109,7 @@ function ResolveDeposit({ d }: { d: StoppedRow }) {
           <Row label="Deduction to the landlord" value={money(b.deduction)} />
           <Row label="Yield so far (variable)" value={money(s.yield_total)} />
           <Row label={`· Platform fee (${percent(terms.platform_fee_bps)})`} value={money(b.platformFee)} />
-          <Row label="· Tenant" value={money(b.tenantYield)} />
+          {terms.tenant_yield_bps > 0 && <Row label="· Tenant" value={money(b.tenantYield)} />}
           <Row label="· Landlord" value={money(b.landlordYield)} />
           <Row
             label="Good-faith deposit"

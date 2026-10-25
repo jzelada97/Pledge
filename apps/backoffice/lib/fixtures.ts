@@ -6,11 +6,12 @@ import type { EscrowView, Status } from "./types";
 // Same ids as the apps/web fixtures so the demo story matches across both apps.
 export const STAFF = "FIXTURE_STAFF";
 export const PLATFORM_FEE_BPS = 2000;
+export const TENANT_YIELD_BPS = 0; // per jurisdiction in GlobalConfig (issue #16). MVP: Portugal, all net yield to the landlord
 const REVIEW_TIMEOUT = 30n * DAY;
 
 export type StoppedRow = EscrowView & { id: bigint };
 
-function row(id: number, status: Status, o: { amount: number; stoppedDaysAgo: number; accrued: number; tenantBps: number; expert?: boolean; report?: boolean }): StoppedRow {
+function row(id: number, status: Status, o: { amount: number; stoppedDaysAgo: number; accrued: number; expert?: boolean; report?: boolean }): StoppedRow {
   const now = nowSecs();
   const amount = toUnits(o.amount);
   const stopped_ts = now - BigInt(o.stoppedDaysAgo) * DAY;
@@ -28,7 +29,7 @@ function row(id: number, status: Status, o: { amount: number; stoppedDaysAgo: nu
         landlord: "FIXTURE_LANDLORD",
         amount,
         end_ts: stopped_ts - 2n * DAY,
-        tenant_yield_bps: o.tenantBps,
+        tenant_yield_bps: TENANT_YIELD_BPS,
         strategy: { id: "usdc_fixed", kind: "DeFindexVault", vault: "FIXTURE_VAULT", asset: "FIXTURE_USDC", asset_name: "USDC:FIXTURE_ISSUER", defindex_strategy: null, apy_pool: null, risk: "Standard", simulated: false, enabled: true },
         platform_fee_bps: PLATFORM_FEE_BPS,
         treasury: "FIXTURE_TREASURY",
@@ -59,9 +60,9 @@ function row(id: number, status: Status, o: { amount: number; stoppedDaysAgo: nu
 }
 
 export const QUEUE: StoppedRow[] = [
-  row(4, "Stopped", { amount: 1100, stoppedDaysAgo: 1, accrued: 66.9, tenantBps: 10000 }),
-  row(5, "UnderReview", { amount: 700, stoppedDaysAgo: 6, accrued: 44.2, tenantBps: 10000, expert: true, report: true }),
-  row(8, "UnderReview", { amount: 900, stoppedDaysAgo: 28, accrued: 51.7, tenantBps: 5000, expert: true }),
+  row(4, "Stopped", { amount: 1100, stoppedDaysAgo: 1, accrued: 66.9 }),
+  row(5, "UnderReview", { amount: 700, stoppedDaysAgo: 6, accrued: 44.2, expert: true, report: true }),
+  row(8, "UnderReview", { amount: 900, stoppedDaysAgo: 28, accrued: 51.7, expert: true }),
 ];
 
 export function stoppedById(id: string): StoppedRow | undefined {
