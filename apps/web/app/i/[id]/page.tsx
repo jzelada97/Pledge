@@ -4,6 +4,7 @@ import { Box, Note, Row, Screen, Tag } from "@/components/wire";
 import { depositById } from "@/lib/fixtures";
 import { date, money, percent } from "@/lib/format";
 import { RISK_LABEL, STRATEGY_COPY } from "@/lib/strategies";
+import { yieldGoesTo } from "@/lib/yield-policy";
 
 // Tenant invitation: /i/<id>#c=<code>. Everything shown is read from the chain (get_terms + config),
 // never from the URL (WEB-11 v2). The id resolves to the escrow with factory.escrow_of(id).
@@ -31,7 +32,7 @@ export default async function Invitation({ params }: PageProps<"/i/[id]">) {
         <Row label="Contract ends" value={date(terms.end_ts)} />
         <Row label="You get it back in full" value="When you and your landlord approve" />
         <Row label="If your landlord doesn't respond" value={`You can claim it from ${date(d.timeout_at)}`} />
-        <Row label="Your share of the yield" value={percent(terms.tenant_yield_bps)} />
+        <Row label="The yield after the platform fee goes to" value={yieldGoesTo(terms.tenant_yield_bps, "tenant")} />
         <Row label="Platform fee (on the yield only)" value={percent(terms.platform_fee_bps)} />
         <Row label="Your landlord pays to stop the release" value={money(terms.stop_bond)} />
         <Row label="If stopped, decided by" value={`Fianzas staff, within ${reviewDays} days`} />

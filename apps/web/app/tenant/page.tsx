@@ -3,6 +3,7 @@ import { Box, Note, Row, Screen, Tag } from "@/components/wire";
 import { DEPOSITS, ME_TENANT, type DepositRow } from "@/lib/fixtures";
 import { STATUS_LABEL, date, money, nowSecs } from "@/lib/format";
 import { breakdown, split } from "@/lib/split";
+import { yieldGoesTo } from "@/lib/yield-policy";
 
 export const dynamic = "force-dynamic"; // dates are relative to now
 
@@ -30,7 +31,11 @@ function DepositCard({ d }: { d: DepositRow }) {
     <Box title={`Deposit #${d.id}`}>
       <Tag>{STATUS_LABEL[d.status]}</Tag>
       <Row label="Your deposit" value={money(terms.amount)} />
-      <Row label={settlement ? "Your yield" : "Your yield so far (variable)"} value={money(b.tenantYield)} />
+      {terms.tenant_yield_bps > 0 ? (
+        <Row label={settlement ? "Your yield" : "Your yield so far (variable)"} value={money(b.tenantYield)} />
+      ) : (
+        <Row label="The yield goes to" value={yieldGoesTo(terms.tenant_yield_bps, "tenant")} />
+      )}
       <Row label="Contract ends" value={date(terms.end_ts)} />
       {terms.strategy.simulated && <Tag>Simulated yield</Tag>}
 
