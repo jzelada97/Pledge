@@ -47,9 +47,12 @@ export default async function Invitation({ params }: PageProps<"/i/[id]">) {
         <p className="text-sm text-neutral-600">{copy.risks}</p>
       </Box>
 
-      <Box title="1 · Create your account">
+      <Box title="1 · Sign in or create your account">
         <SignButton label="Continue with Face ID" />
-        <Note>No app to install, no fees for you.</Note>
+        <p className="text-sm text-neutral-600">
+          Already have an account? Face ID signs you in. New here? We create one for you. No app to install, no fees.
+        </p>
+        <Note>wallet.connect() first (silent reconnect); if it returns null, wallet.createAccount().</Note>
       </Box>
 
       <Box title="2 · Add the money from your bank">
