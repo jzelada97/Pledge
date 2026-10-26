@@ -8,11 +8,24 @@
 // Las listas por casero e inquilino salen de la propia API de TW (get-escrows-by-role).
 import { Hono } from "hono";
 import { z } from "zod";
-import { FeeBumpTransaction, Keypair, StrKey, TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
-import { FianzaError, TW_ESCROW_WASM_TESTNET, TW_FEE_BPS, TW_VAULT_TESTNET, buildDeployBody, type Escrow } from "@fianzas/trustless";
-import type { TtlCache } from "../chain";
+import { Address, FeeBumpTransaction, Keypair, StrKey, TransactionBuilder, nativeToScVal, type Transaction } from "@stellar/stellar-sdk";
+import {
+  FianzaError,
+  RELEASE_MILESTONE,
+  TW_ESCROW_WASM_TESTNET,
+  TW_FEE_ADDRESS_TESTNET,
+  TW_FEE_BPS,
+  TW_VAULT_TESTNET,
+  buildDeployBody,
+  buildStopBody,
+  fromDecimal,
+  planApproveRelease,
+  toDecimal as twDecimal,
+  type Escrow,
+} from "@fianzas/trustless";
+import { toDecimal, type Chain, type TtlCache, type UnsignedTransactionResponse } from "../chain";
 import type { ApiConfig } from "../config";
-import { accountAddress, amountInput, contractParam, parseBody } from "../http";
+import { accountAddress, amountInput, contractAddress, contractParam, parseBody, utr } from "../http";
 import { Problem, notImplementedYet, notSupported, serviceDisabled, validationError } from "../problem";
 import { parseAmount } from "../views";
 import { withTw, type TwClient } from "./client";
@@ -21,6 +34,23 @@ import { escrowView, termsView } from "./views";
 const STATE_TTL = 5_000;
 const MAX_PAGE = 50;
 const DEPLOY_FN = "tw_new_single_release_escrow";
+const SR = "/escrow/single-release/v2";
+
+const fundBody = z.object({ contractId: contractAddress, signer: accountAddress, amount: amountInput, inviteCode: z.string().optional() });
+const approveBody = z.object({ contractId: contractAddress, approver: accountAddress, milestoneIndexes: z.array(z.number().int()) });
+const approveReleaseBody = z.object({ contractId: contractAddress, signer: accountAddress, milestoneIndexes: z.array(z.number().int()) });
+const stopBody = z.object({ signer: accountAddress, reasonHash: z.string().optional() });
+
+function checkMilestones(idx: number[]) {
+  if (idx.length !== 1 || idx[0] !== Number(RELEASE_MILESTONE)) {
+    throw new Problem(422, "ESCROW_INVALID_MILESTONE_INDEX", "La fianza tiene un único milestone: [0]", `milestoneIndexes = ${JSON.stringify(idx)}`);
+  }
+}
+
+/** Respuesta de un build de TW (`unsignedTransaction`) en la forma de INTERFACES § 8. */
+function fromTw(unsignedTransaction: string, passphrase: string): UnsignedTransactionResponse {
+  return { unsignedXdr: unsignedTransaction, txHash: parseTx(unsignedTransaction, passphrase).hash().toString("hex") };
+}
 
 const createBody = z.object({
   landlord: accountAddress,
@@ -75,25 +105,38 @@ function isDeployTx(tx: Transaction): boolean {
   return op.func.invokeContract().functionName().toString() === DEPLOY_FN;
 }
 
-export function planARoutes(cfg: ApiConfig, tw: TwClient | null, cache: TtlCache) {
+export function planARoutes(cfg: ApiConfig, tw: TwClient | null, chain: Chain, cache: TtlCache) {
   const r = new Hono();
   const d = cfg.deployments;
   const tenantYieldBps = d.tenantYieldBps;
+  const isPasskey = (addr: string) => StrKey.isValidContract(addr);
 
   function requireTw(): TwClient {
     if (!tw) throw serviceDisabled("Plan A no configurado: falta TW_API_KEY");
     return tw;
   }
 
+  // La cadena manda (AD-21): la base de datos de TW solo se actualiza con su propio send-transaction, así
+  // que flags y milestones se leen del contrato y se superponen a lo que devuelve su API.
   async function loadEscrow(contractId: string): Promise<Escrow> {
     const client = requireTw();
     return cache.get(`tw:escrow:${contractId}`, STATE_TTL, async () => {
       const list = await withTw(() => client.getEscrows([contractId]));
       const e = list[0];
       if (!e) throw new Problem(404, "ESCROW_NOT_FOUND", "No existe esa fianza", `${contractId} no es un escrow de Trustless Work`);
-      return e;
+      const onChain = await chain.read<{ flags?: Escrow["flags"]; milestones?: Escrow["milestones"] }>(contractId, "get_escrow").catch(() => null);
+      if (!onChain?.flags || !onChain.milestones) return e;
+      return { ...e, flags: onChain.flags, milestones: onChain.milestones.map((m) => ({ ...m, status: String(m.status) })) };
     });
   }
+
+  // Tras un envío por el Relayer (passkeys), el front avisa aquí para que el indexador de TW se actualice.
+  r.post("/fianzas/v1/indexer", async (c) => {
+    const client = requireTw();
+    const b = await parseBody(c, z.object({ txHash: z.string().regex(/^[0-9a-f]{64}$/i) }));
+    await withTw(() => client.indexTransaction(b.txHash));
+    return c.json({ ok: true, txHash: b.txHash });
+  });
 
   r.get("/fianzas/v1/config", (c) =>
     c.json({
@@ -208,12 +251,90 @@ export function planARoutes(cfg: ApiConfig, tw: TwClient | null, cache: TtlCache
     });
   });
 
+  // ---------- Acciones (build → sign → submit) ----------
+  // Cuenta G: el cuerpo lo construye la API de TW (la cuenta firma el XDR y lo envía por
+  // /stellar/send-transaction). Passkey (C…): la API de TW no la admite como firmante (#61), así que la
+  // llamada se construye contra el propio contrato del escrow y se firma/envía por el Relayer (#82 C).
+
+  // fund_escrow(signer, expected_escrow, amount): el escrow actual se lee de la cadena y se reenvía tal cual.
+  r.post(`${SR}/fund`, async (c) => {
+    const client = requireTw();
+    const b = await parseBody(c, fundBody);
+    const e = await loadEscrow(b.contractId);
+    const amount = parseAmount(b.amount);
+    if (amount !== fromDecimal(e.amount)) {
+      throw new Problem(422, "ESCROW_PROPERTIES_MISMATCH", "El importe no coincide con el de la fianza", `amount debe ser ${toDecimal(fromDecimal(e.amount))}`);
+    }
+    if (b.signer !== e.roles.receiver) throw new Problem(422, "FZ_NOT_PARTY", "Solo el inquilino de la fianza puede depositarla");
+    if (!isPasskey(b.signer)) {
+      const { unsignedTransaction } = await withTw(() => client.fund({ contractId: b.contractId, signer: b.signer, amount: twDecimal(amount) }));
+      return c.json(fromTw(unsignedTransaction, cfg.networkPassphrase));
+    }
+    const expected = await chain.readRaw(b.contractId, "get_escrow");
+    const built = await chain.build(b.contractId, "fund_escrow", [new Address(b.signer).toScVal(), expected, nativeToScVal(amount, { type: "i128" })], b.signer);
+    return c.json(utr(built));
+  });
+
+  async function approveOrRelease(contractId: string, who: string, mustRelease: boolean) {
+    const client = requireTw();
+    const e = await loadEscrow(contractId);
+    const notCompleted = () => new Problem(422, "ESCROW_NOT_COMPLETED", "Falta la aprobación del casero", "Usa approve-milestones para la aprobación del casero");
+    let action;
+    try {
+      action = domain(() => planApproveRelease(e, who));
+    } catch (err) {
+      // Como en TW: liberar antes de que el casero apruebe es ESCROW_NOT_COMPLETED.
+      if (mustRelease && err instanceof Problem && err.code === "FZ_NOT_APPROVED") throw notCompleted();
+      throw err;
+    }
+    if (mustRelease && action.kind !== "release") throw notCompleted();
+    if (action.kind === "approve") {
+      if (!isPasskey(who)) {
+        const { unsignedTransaction } = await withTw(() => client.approveMilestone(action.body));
+        return fromTw(unsignedTransaction, cfg.networkPassphrase);
+      }
+      return utr(await chain.build(contractId, "approve_milestone", [nativeToScVal(Number(RELEASE_MILESTONE), { type: "u32" }), new Address(who).toScVal()], who));
+    }
+    if (!isPasskey(who)) {
+      const { unsignedTransaction } = await withTw(() => client.releaseFunds(action.body));
+      return fromTw(unsignedTransaction, cfg.networkPassphrase);
+    }
+    // release_funds(release_signer, trustless_work_address): la comisión de TW va a su dirección fija.
+    return utr(await chain.build(contractId, "release_funds", [new Address(who).toScVal(), new Address(TW_FEE_ADDRESS_TESTNET).toScVal()], who));
+  }
+
+  // Casero: aprueba el hito. Inquilino (tras la aprobación): libera.
+  r.post(`${SR}/approve-milestones`, async (c) => {
+    const b = await parseBody(c, approveBody);
+    checkMilestones(b.milestoneIndexes);
+    return c.json(await approveOrRelease(b.contractId, b.approver, false));
+  });
+  r.post(`${SR}/approve-and-release-milestones`, async (c) => {
+    const b = await parseBody(c, approveReleaseBody);
+    checkMilestones(b.milestoneIndexes);
+    return c.json(await approveOrRelease(b.contractId, b.signer, true));
+  });
+
+  // Parar: solo el casero y solo antes de aprobar. TW no guarda el motivo on-chain (reasonHash se ignora).
+  r.post("/fianzas/v1/fianzas/:contractId/stop", async (c) => {
+    const client = requireTw();
+    const contractId = contractParam(c);
+    const b = await parseBody(c, stopBody);
+    const e = await loadEscrow(contractId);
+    const body = domain(() => buildStopBody(e, b.signer));
+    if (!isPasskey(b.signer)) {
+      const { unsignedTransaction } = await withTw(() => client.dispute(body));
+      return c.json({ ...fromTw(unsignedTransaction, cfg.networkPassphrase), stopBond: null });
+    }
+    return c.json({ ...utr(await chain.build(contractId, "dispute_escrow", [new Address(b.signer).toScVal()], b.signer)), stopBond: null });
+  });
+
   for (const action of ["cancel"]) {
     r.post(`/fianzas/v1/fianzas/:contractId/${action}`, () => {
       throw notSupported("El escrow de Trustless Work no se puede cancelar: se libera o se resuelve");
     });
   }
-  for (const action of ["stop", "assign-expert", "record-report", "resolve", "claim-timeout", "claim-review-timeout", "preview-settlement"]) {
+  for (const action of ["assign-expert", "record-report", "resolve", "claim-timeout", "claim-review-timeout", "preview-settlement"]) {
     r.all(`/fianzas/v1/fianzas/:contractId/${action}`, () => {
       throw notImplementedYet(`${action}: llega en los siguientes PR de #84`);
     });

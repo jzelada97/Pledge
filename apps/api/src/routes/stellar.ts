@@ -6,12 +6,13 @@ import { z } from "zod";
 import type { Chain, TtlCache } from "../chain";
 import type { ApiConfig } from "../config";
 import { escrowHelpers } from "../escrows";
+import type { TwClient } from "../plan-a/client";
 import { validationError } from "../problem";
 import { assertAllowedTransaction } from "../tx-policy";
 
 const body = z.object({ signedXdr: z.string().min(1) });
 
-export function stellarRoutes(cfg: ApiConfig, chain: Chain, cache: TtlCache) {
+export function stellarRoutes(cfg: ApiConfig, chain: Chain, cache: TtlCache, tw: TwClient | null = null) {
   const r = new Hono();
   const esc = escrowHelpers(cfg, chain, cache);
   r.post("/stellar/send-transaction", async (c) => {
@@ -25,6 +26,8 @@ export function stellarRoutes(cfg: ApiConfig, chain: Chain, cache: TtlCache) {
     if (!parsed.success) throw validationError("Falta signedXdr", { issues: parsed.error.issues });
     const contractId = await assertAllowedTransaction(parsed.data.signedXdr, cfg, chain, esc, cache);
     const out = await chain.send(parsed.data.signedXdr);
+    // Plan A: la base de datos de TW no ve lo que enviamos por nuestra RPC; se le avisa (sin bloquear).
+    if (tw && out.status === "SUCCESS") await tw.indexTransaction(out.txHash).catch(() => undefined);
     return c.json({ ...out, contractId, code: "STELLAR_TX_SUBMITTED" });
   });
   return r;

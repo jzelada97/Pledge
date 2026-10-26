@@ -9,25 +9,43 @@ export type TwRole = keyof Roles;
 export interface TwClient extends ReturnType<typeof createTrustlessClient> {
   /** Escrows en los que `address` tiene el rol (`GET /helper/get-escrows-by-role`). */
   getEscrowsByRole(role: TwRole, address: string): Promise<Escrow[]>;
+  /**
+   * Avisa al indexador de TW de una transacción enviada por otra vía (nuestra RPC o el Relayer):
+   * su base de datos solo se actualiza sola con su propio `send-transaction`.
+   */
+  indexTransaction(txHash: string): Promise<void>;
 }
 
 export function createTwClient(cfg: TrustlessConfig, fetchImpl: typeof fetch = fetch): TwClient {
   const base = (cfg.baseUrl ?? TW_YIELD_URL).replace(/\/+$/, "");
   const inner = createTrustlessClient({ apiKey: cfg.apiKey, baseUrl: base, fetch: fetchImpl });
+
+  async function raw(method: "GET" | "PUT", path: string, body?: unknown): Promise<unknown> {
+    const res = await fetchImpl(`${base}${path}`, {
+      method,
+      headers: { "Content-Type": "application/json", "x-api-key": cfg.apiKey },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const text = await res.text();
+    let data: unknown;
+    try {
+      data = text ? JSON.parse(text) : undefined;
+    } catch {
+      data = undefined;
+    }
+    if (!res.ok) throw new TrustlessApiError(res.status, data as never);
+    return data;
+  }
+
   return {
     ...inner,
     async getEscrowsByRole(role, address) {
       const q = new URLSearchParams({ role, roleAddress: address, type: "single-release", validateOnChain: "true" });
-      const res = await fetchImpl(`${base}/helper/get-escrows-by-role?${q}`, { headers: { "x-api-key": cfg.apiKey } });
-      const text = await res.text();
-      let data: unknown;
-      try {
-        data = text ? JSON.parse(text) : [];
-      } catch {
-        data = undefined;
-      }
-      if (!res.ok) throw new TrustlessApiError(res.status, data as never);
+      const data = await raw("GET", `/helper/get-escrows-by-role?${q}`);
       return Array.isArray(data) ? (data as Escrow[]) : [];
+    },
+    async indexTransaction(txHash) {
+      await raw("PUT", "/indexer/update-from-txhash", { txHash });
     },
   };
 }
