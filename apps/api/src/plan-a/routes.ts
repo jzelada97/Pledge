@@ -8,7 +8,7 @@
 // Las listas por casero e inquilino salen de la propia API de TW (get-escrows-by-role).
 import { Hono } from "hono";
 import { z } from "zod";
-import { Address, FeeBumpTransaction, Keypair, StrKey, TransactionBuilder, nativeToScVal, type Transaction } from "@stellar/stellar-sdk";
+import { Address, FeeBumpTransaction, Keypair, StrKey, TransactionBuilder, nativeToScVal, xdr, type Transaction } from "@stellar/stellar-sdk";
 import {
   FianzaError,
   RELEASE_MILESTONE,
@@ -31,12 +31,13 @@ import {
   type Escrow,
 } from "@fianzas/trustless";
 import { toDecimal, type Chain, type TtlCache, type UnsignedTransactionResponse } from "../chain";
-import type { ApiConfig } from "../config";
+import { DEFAULT_CLAIM_TIMEOUT_SECS, type ApiConfig } from "../config";
+import { rpcUnavailable } from "../tx-policy";
 import { accountAddress, amountInput, contractAddress, contractParam, parseBody, utr } from "../http";
 import { Problem, notImplementedYet, notSupported, serviceDisabled, validationError } from "../problem";
 import { parseAmount } from "../views";
 import { withTw, type TwClient } from "./client";
-import { escrowView, termsView } from "./views";
+import { deadlineView, engagementIdWithDeadline, escrowView, statusOf, termsView } from "./views";
 
 const STATE_TTL = 5_000;
 const MAX_PAGE = 50;
@@ -67,12 +68,15 @@ const createBody = z.object({
   amount: amountInput,
   title: z.string().min(1).max(120).optional(),
   description: z.string().min(1).max(500).optional(),
-  fianzaId: z.union([z.string().min(1).max(64), z.number().int().nonnegative()]).optional(),
+  fianzaId: z.union([z.string().min(1).max(48), z.number().int().nonnegative()]).optional(),
+  /** Fin del alquiler (unix seconds). Va en el engagementId y fija claimableAt = endTs + TW_CLAIM_TIMEOUT_SECS. */
+  endTs: z.number().int().positive().max(999_999_999_999).optional(),
   /** Cuenta G que firma el despliegue. Por defecto, la tesorería. */
   signer: accountAddress.optional(),
   vault: accountAddress.optional(),
 });
 const submitBody = z.object({ signedXdr: z.string().min(1) });
+const claimBody = z.object({ signer: accountAddress, disputeTxHash: z.string().regex(/^[0-9a-f]{64}$/i).optional() });
 
 const encodeCursor = (start: number) => Buffer.from(JSON.stringify({ start })).toString("base64url");
 function decodeCursor(cursor: string | undefined): number {
@@ -107,6 +111,15 @@ function parseTx(xdr: string, passphrase: string): Transaction {
   return tx;
 }
 
+/** La única invocación de contrato de la transacción (contrato, función y argumentos), o null. */
+function invocationOf(tx: Transaction): { contractId: string; fn: string; args: xdr.ScVal[] } | null {
+  const op = tx.operations[0];
+  if (tx.operations.length !== 1 || !op || op.type !== "invokeHostFunction") return null;
+  if (op.func.switch().name !== "hostFunctionTypeInvokeContract") return null;
+  const ic = op.func.invokeContract();
+  return { contractId: Address.fromScAddress(ic.contractAddress()).toString(), fn: ic.functionName().toString(), args: ic.args() };
+}
+
 /** true si la única operación es la llamada al deployer de TW (`TW_DEPLOYER_TESTNET.tw_new_single_release_escrow`). */
 function isDeployTx(tx: Transaction): boolean {
   const op = tx.operations[0];
@@ -139,10 +152,13 @@ export function assertDeployToSign(tx: Transaction, treasury: string): void {
   if (BigInt(tx.fee) > MAX_DEPLOY_FEE_STROOPS) bad(`comisión ${tx.fee}`);
 }
 
-export function planARoutes(cfg: ApiConfig, tw: TwClient | null, chain: Chain, cache: TtlCache) {
+export function planARoutes(cfg: ApiConfig, tw: TwClient | null, chain: Chain, cache: TtlCache, now: () => number = Date.now) {
   const r = new Hono();
   const d = cfg.deployments;
   const tenantYieldBps = d.tenantYieldBps;
+  const claimTimeoutSecs = cfg.trustless?.claimTimeoutSecs ?? DEFAULT_CLAIM_TIMEOUT_SECS;
+  const nowSecs = () => Math.floor(now() / 1000);
+  const deadline = () => ({ claimTimeoutSecs, nowSecs: nowSecs() });
   const isPasskey = (addr: string) => StrKey.isValidContract(addr);
 
   function requireTw(): TwClient {
@@ -204,7 +220,7 @@ export function planARoutes(cfg: ApiConfig, tw: TwClient | null, chain: Chain, c
     }
     const staff = d.staff[0];
     if (!staff) throw serviceDisabled("deployments.staff está vacío");
-    const fianzaId = b.fianzaId ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const fianzaId = engagementIdWithDeadline(b.fianzaId ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, b.endTs);
     const body = domain(() =>
       buildDeployBody({
         fianzaId,
@@ -258,7 +274,7 @@ export function planARoutes(cfg: ApiConfig, tw: TwClient | null, chain: Chain, c
 
   r.get("/fianzas/v1/fianzas/:contractId/terms", async (c) => {
     const e = await loadEscrow(contractParam(c));
-    return c.json(termsView(e, tenantYieldBps));
+    return c.json(termsView(e, tenantYieldBps, deadline()));
   });
 
   r.get("/fianzas/v1/fianzas/:contractId/view", async (c) => {
@@ -267,7 +283,7 @@ export function planARoutes(cfg: ApiConfig, tw: TwClient | null, chain: Chain, c
     const e = await loadEscrow(contractId);
     // El vault es la fuente exacta del rendimiento; si no responde, se estima con el saldo (CT-10).
     const position = await cache.get(`tw:position:${contractId}`, STATE_TTL, () => client.vaultPosition(contractId).catch(() => null));
-    return c.json(escrowView(e, tenantYieldBps, position));
+    return c.json(escrowView(e, tenantYieldBps, position, deadline()));
   });
 
   r.get("/fianzas/v1/fianzas/:contractId/yield", async (c) => {
@@ -275,7 +291,7 @@ export function planARoutes(cfg: ApiConfig, tw: TwClient | null, chain: Chain, c
     const client = requireTw();
     const e = await loadEscrow(contractId);
     const position = await cache.get(`tw:position:${contractId}`, STATE_TTL, () => client.vaultPosition(contractId).catch(() => null));
-    const v = escrowView(e, tenantYieldBps, position);
+    const v = escrowView(e, tenantYieldBps, position, deadline());
     return c.json({
       accruedYield: v.accruedYield,
       expectedPayout: v.expectedPayout,
@@ -451,11 +467,114 @@ export function planARoutes(cfg: ApiConfig, tw: TwClient | null, chain: Chain, c
       throw notSupported("El escrow de Trustless Work no guarda el perito ni el informe on-chain; se gestiona en el backoffice", `POST /api/fianzas/v1/fianzas/{contractId}/resolve`);
     });
   }
-  for (const action of ["claim-timeout", "claim-review-timeout"]) {
-    r.post(`/fianzas/v1/fianzas/:contractId/${action}`, () => {
-      throw notSupported("El escrow de Trustless Work no tiene plazos: sin aprobación del casero no hay reclamación automática");
-    });
+  // ---------- Liberación a plazo (#115) ----------
+  // El escrow de TW no tiene plazos; la regla la aplica la plataforma. Pasado claimableAt sin aprobación
+  // del casero, el inquilino abre la disputa (paso 1) y el staff la resuelve con deducción 0 (paso 2) y
+  // reparte el sobrante (paso 3). Cada llamada avanza un paso según el estado real del escrow. El paso 2
+  // exige el hash de la disputa del inquilino: así una parada del casero anterior al plazo nunca se
+  // resuelve sola y va al perito como siempre.
+  /** Comprueba que `hash` es la disputa del inquilino sobre este escrow, enviada después de claimableAt. */
+  async function verifyTenantDispute(hash: string, contractId: string, tenant: string, claimableAt: number): Promise<void> {
+    const bad = (why: string): never => {
+      throw new Problem(403, "FZ_CLAIM_NOT_VERIFIED", "disputeTxHash no es la reclamación del inquilino", why, { disputeTxHash: hash });
+    };
+    let tx;
+    try {
+      tx = await chain.getTransaction(hash);
+    } catch (e) {
+      throw rpcUnavailable(`leyendo la transacción ${hash}`, e);
+    }
+    if (!tx) return bad("la transacción no existe en la red");
+    if (!tx.success) return bad("la transacción falló");
+    if (tx.envelope instanceof FeeBumpTransaction) return bad("no se admiten fee bumps");
+    const inv = invocationOf(tx.envelope);
+    if (!inv || inv.contractId !== contractId || inv.fn !== "dispute_escrow") return bad("no es dispute_escrow sobre esta fianza");
+    const arg = inv.args[0];
+    if (!arg || arg.switch().name !== "scvAddress" || Address.fromScAddress(arg.address()).toString() !== tenant) return bad("no la abrió el inquilino");
+    if (tx.createdAt <= claimableAt) return bad("se abrió antes de vencer el plazo: la resuelve el perito");
   }
+
+  /** Firma con el staff (si hay clave) y envía por TW un resolve/withdraw construido por su API. */
+  async function signAsStaff(unsignedTransaction: string, contractId: string, fn: "resolve_dispute" | "withdraw_remaining_funds") {
+    const client = requireTw();
+    const staff = d.staff[0]!;
+    const secret = cfg.trustless?.staffSecret ?? null;
+    if (!secret) return { signed: false as const, ...fromTw(unsignedTransaction, cfg.networkPassphrase), signer: staff };
+    const tx = parseTx(unsignedTransaction, cfg.networkPassphrase);
+    const bad = (why: string): never => {
+      throw new Problem(502, "FZ_TW_UNEXPECTED_TX", "Trustless Work devolvió una transacción inesperada; no se ha firmado", undefined, undefined, `${fn}: ${why}`);
+    };
+    const kp = Keypair.fromSecret(secret);
+    if (kp.publicKey() !== staff) throw new Problem(500, "FZ_STAFF_KEY_MISMATCH", "STAFF_SECRET no es la cuenta del staff de deployments");
+    if (tx.source !== staff) return bad(`origen ${tx.source}`);
+    const inv = invocationOf(tx);
+    if (!inv || inv.contractId !== contractId || inv.fn !== fn) return bad("contrato o función");
+    tx.sign(kp);
+    const sent = await withTw(() => client.sendTransaction(tx.toXDR()));
+    return { signed: true as const, txHash: tx.hash().toString("hex"), status: sent.status ?? "SUCCESS" };
+  }
+
+  r.post("/fianzas/v1/fianzas/:contractId/claim-timeout", async (c) => {
+    const client = requireTw();
+    const contractId = contractParam(c);
+    const b = await parseBody(c, claimBody);
+    const e = await loadEscrow(contractId);
+    const { endTs, claimableAt } = deadlineView(e, claimTimeoutSecs, nowSecs());
+    if (endTs === null || claimableAt === null) {
+      throw new Problem(422, "FZ_NO_DEADLINE", "Esta fianza se creó sin fecha de fin", "El engagementId no lleva -end<endTs>");
+    }
+    if (nowSecs() <= claimableAt) {
+      throw new Problem(409, "FZ_TIMEOUT_NOT_REACHED", "Aún no ha vencido el plazo", `claimableAt = ${claimableAt}`, { endTs, claimableAt, claimTimeoutSecs });
+    }
+    if (e.milestones[0]?.approved) {
+      throw new Problem(409, "FZ_ALREADY_APPROVED", "El casero ya aprobó la devolución", "Recupera la fianza con approve-and-release-milestones");
+    }
+    if (b.signer !== e.roles.receiver) throw new Problem(422, "FZ_NOT_PARTY", "Solo el inquilino de la fianza puede reclamarla");
+    const status = statusOf(e);
+
+    if (status === "Active") {
+      // Paso 1: el inquilino abre la disputa (TW lo permite: comprobado en testnet).
+      const build = isPasskey(b.signer)
+        ? utr(await chain.build(contractId, "dispute_escrow", [new Address(b.signer).toScVal()], b.signer))
+        : fromTw((await withTw(() => client.dispute({ contractId, signer: b.signer }))).unsignedTransaction, cfg.networkPassphrase);
+      return c.json({ step: "dispute", ...build, claimableAt, next: "Firma y envía; después vuelve a llamar con disputeTxHash" });
+    }
+    if (status === "Stopped") {
+      // Paso 2: el staff resuelve con deducción 0 → todo al inquilino. Solo si la disputa es la suya.
+      if (!b.disputeTxHash) throw validationError("Falta disputeTxHash: el hash de la disputa que abrió el inquilino");
+      await verifyTenantDispute(b.disputeTxHash, contractId, e.roles.receiver, claimableAt);
+      const body = domain(() => buildResolveBody(e, d.staff[0]!, 0n));
+      const { unsignedTransaction } = await withTw(() => client.resolveDispute(body));
+      const res = await signAsStaff(unsignedTransaction, contractId, "resolve_dispute");
+      if (!res.signed) return c.json({ step: "resolve", ...res, distributions: distributionsView(body), next: "Firma con el staff, envía por send-transaction y vuelve a llamar" });
+      // Paso 3 seguido, si queda sobrante.
+      const [bal] = await withTw(() => client.getBalances([contractId]));
+      const remaining = floorToUnits(bal?.balance ?? 0);
+      let distributed: { txHash: string } | null = null;
+      if (remaining > 0n) {
+        const wbody = buildWithdrawYieldBody({ ...e, flags: { ...e.flags, resolved: true } }, d.staff[0]!, remaining, tenantYieldBps, platformFeeBps);
+        const w = await withTw(() => client.withdrawRemainingFunds(wbody));
+        distributed = await signAsStaff(w.unsignedTransaction, contractId, "withdraw_remaining_funds");
+      }
+      return c.json({ step: "done", resolvedTx: res.txHash, distributions: distributionsView(body), remaining: toDecimal(remaining), distributedTx: distributed?.txHash ?? null });
+    }
+    if (status === "Settled" && e.flags.resolved) {
+      // Paso 3 suelto (cuando el staff firmó a mano el paso 2).
+      const [bal] = await withTw(() => client.getBalances([contractId]));
+      const remaining = floorToUnits(bal?.balance ?? 0);
+      if (remaining === 0n) return c.json({ step: "done", remaining: "0.0000000", distributedTx: null });
+      const wbody = domain(() => buildWithdrawYieldBody(e, d.staff[0]!, remaining, tenantYieldBps, platformFeeBps));
+      const w = await withTw(() => client.withdrawRemainingFunds(wbody));
+      const res = await signAsStaff(w.unsignedTransaction, contractId, "withdraw_remaining_funds");
+      if (!res.signed) return c.json({ step: "distribute", ...res, remaining: toDecimal(remaining), distributions: distributionsView(wbody), next: "Firma con el staff y envía por send-transaction" });
+      return c.json({ step: "done", remaining: toDecimal(remaining), distributedTx: res.txHash });
+    }
+    throw new Problem(409, "FZ_BAD_STATUS", "La fianza no admite la reclamación en su estado actual", `estado ${status}`);
+  });
+
+  r.post("/fianzas/v1/fianzas/:contractId/claim-review-timeout", () => {
+    throw notSupported("El escrow de Trustless Work no tiene plazo de revisión: una parada del casero la resuelve el staff");
+  });
 
   // Listas del panel: la API de TW indexa por rol. El casero es approver; el inquilino, receiver.
   async function listBy(role: "approver" | "receiver", address: string, cursor: string | undefined, limitQ: string | undefined, status: string | undefined) {
@@ -467,7 +586,7 @@ export function planARoutes(cfg: ApiConfig, tw: TwClient | null, chain: Chain, c
     if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PAGE) throw validationError(`limit entre 1 y ${MAX_PAGE}`);
     const start = decodeCursor(cursor);
     const all = await cache.get(`tw:role:${role}:${address}`, STATE_TTL, () => withTw(() => client.getEscrowsByRole(role, address)));
-    let rows = all.map((e) => escrowView(e, tenantYieldBps));
+    let rows = all.map((e) => escrowView(e, tenantYieldBps, undefined, deadline()));
     if (status) rows = rows.filter((f) => f.status.toLowerCase() === status.toLowerCase());
     const page = rows.slice(start, start + limit);
     const next = start + page.length;

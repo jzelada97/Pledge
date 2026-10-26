@@ -85,6 +85,9 @@ function setup(opts: Opts = {}) {
     async wasmHashOf() {
       return null;
     },
+    async getTransaction() {
+      return null;
+    },
   };
   const app = createApp(loadConfigFromEnv({}, deployments), { chain });
   const post = (path: string, body: unknown) =>

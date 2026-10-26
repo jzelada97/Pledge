@@ -13,6 +13,16 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ---
 
+## 2026-10-26 11:30 · Liberación a plazo en el plan A: la garantía la da la plataforma, no la cadena (#115)
+- **Contexto:** el escrow de Trustless Work no tiene plazos: sin aprobación del casero, el inquilino no puede recuperar la fianza solo. De las tres opciones de #115 (fork del contrato de TW, volver al plan B, o regla en la plataforma) se elige la tercera para la demo.
+- **Decisión:**
+  - La fecha de fin del alquiler (`endTs`) va en el engagementId del escrow (`fianza-<id>-end<endTs>`), que es inmutable y público. `claimableAt = endTs + TW_CLAIM_TIMEOUT_SECS` (30 días en producción; 120 s en la demo).
+  - Pasado `claimableAt` sin aprobación del casero, `POST /fianzas/v1/fianzas/{id}/claim-timeout` guía tres pasos: el inquilino abre la disputa (`dispute_escrow`, que TW le permite), el staff la resuelve con deducción 0 y reparte el sobrante. Con `STAFF_SECRET` en el servidor los pasos 2 y 3 son automáticos; sin ella el staff firma a mano.
+  - El servidor solo resuelve si la disputa es la del inquilino y posterior al plazo (se verifica en la cadena). Una parada del casero anterior al plazo sigue yendo al perito.
+  - Textos del front (P3): «Si a los 30 días del fin del contrato el casero no ha aprobado ni abierto una disputa, puedes reclamar la fianza y te la devolvemos íntegra».
+- **Descartado para la demo:** fork del contrato de TW con `claim_after_timeout` on-chain (queda como roadmap: es lo único que da la garantía sin confiar en la plataforma) y volver al plan B.
+- Decide: P2 con P1 · Implementa: P2 (API) · Probado en testnet: `CA5U6SNN…JERA`, disputa `b9a32710…`, resolve `99db6986…`.
+
 ## 2026-10-26 11:00 · P4 pasa al pitch; el front queda libre para el equipo
 - **Decisión:** Diego (P4) se dedica al pitch (`pitch/`). `apps/web` y `apps/backoffice` pasan a ser **áreas libres** (`owner: "*"` en `harness/team.json`, como `docs/`): cualquiera las edita sin lock ni `cross-area`. `apps/web/app/api/` sigue siendo del área `api` (P2). El trabajo del front se reparte con issues asignados: conectar las pantallas del plan A con `apps/api` (#84), el flujo de la passkey del inquilino (#82) y el backoffice del staff (resolver y `distribute-yield`, #104).
 - **Estado de lo que deja Diego:** #100 (rediseño "Pledge") **ya está fusionado** (aprobado por P3, CI en verde). #96 (cabeceras de seguridad, cierra #77) sigue abierto y en conflicto con `main`; le falta el indexador de las passkeys en `connect-src` (`deployments.smartAccount.indexerUrl`, #107). Quien coja el front lo hereda: commits a su rama con su permiso, sin reescribir historia. El lock `deps` #98 lo libera él.

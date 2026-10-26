@@ -11,6 +11,8 @@ import {
   rpc,
   scValToNative,
   xdr,
+  type FeeBumpTransaction,
+  type Transaction,
 } from "@stellar/stellar-sdk";
 import { createChainLookups } from "@fianzas/wallet/server";
 import type { ApiConfig } from "./config";
@@ -100,6 +102,16 @@ export interface Chain {
   latestLedger(): Promise<number>;
   // Hash (hex) del wasm de un contrato, o null si no existe o no es wasm. Para reconocer escrows de TW.
   wasmHashOf(contractId: string): Promise<string | null>;
+  // Una transacción ya incluida en un ledger (para verificar quién hizo qué y cuándo), o null si no existe.
+  getTransaction(hash: string): Promise<ConfirmedTransaction | null>;
+}
+
+export interface ConfirmedTransaction {
+  success: boolean;
+  ledger: number;
+  /** Unix seconds del cierre del ledger. */
+  createdAt: number;
+  envelope: Transaction | FeeBumpTransaction;
 }
 
 export function createChain(cfg: ApiConfig): Chain {
@@ -216,6 +228,17 @@ export function createChain(cfg: ApiConfig): Chain {
 
     wasmHashOf(contractId: string) {
       return lookups.wasmHashOf(contractId);
+    },
+
+    async getTransaction(hash: string) {
+      const got = await server.getTransaction(hash);
+      if (got.status === rpc.Api.GetTransactionStatus.NOT_FOUND) return null;
+      return {
+        success: got.status === rpc.Api.GetTransactionStatus.SUCCESS,
+        ledger: got.ledger,
+        createdAt: Number(got.createdAt),
+        envelope: TransactionBuilder.fromXDR(got.envelopeXdr.toXDR("base64"), cfg.networkPassphrase),
+      };
     },
 
     async latestLedger() {

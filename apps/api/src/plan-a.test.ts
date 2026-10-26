@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { Account, Address, Asset, BASE_FEE, Contract, Keypair, Operation, StrKey, TransactionBuilder, scValToNative, xdr } from "@stellar/stellar-sdk";
+import { Account, Address, Asset, BASE_FEE, Contract, Keypair, Operation, StrKey, TransactionBuilder, scValToNative, xdr, type Transaction } from "@stellar/stellar-sdk";
 import { TW_DEPLOYER_TESTNET, TW_DEPLOY_FN, TW_ESCROW_WASM_TESTNET, TW_FEE_ADDRESS_TESTNET, TW_YIELD_URL, type Escrow } from "@fianzas/trustless";
 import { createApp } from "./app";
-import type { Chain } from "./chain";
+import type { Chain, ConfirmedTransaction } from "./chain";
 import { deployments, loadConfigFromEnv } from "./config";
 import { Problem } from "./problem";
 
@@ -39,9 +39,9 @@ function deployXdr(
   fn = TW_DEPLOY_FN,
   source = deployments.treasury,
   contract = TW_DEPLOYER_TESTNET,
-  opts: { fee?: string; subs?: xdr.SorobanAuthorizedInvocation[]; auth?: boolean } = {},
+  opts: { fee?: string; subs?: xdr.SorobanAuthorizedInvocation[]; auth?: boolean; args?: xdr.ScVal[] } = {},
 ): string {
-  const args = new xdr.InvokeContractArgs({ contractAddress: new Address(contract).toScAddress(), functionName: fn, args: [] });
+  const args = new xdr.InvokeContractArgs({ contractAddress: new Address(contract).toScAddress(), functionName: fn, args: opts.args ?? [] });
   const entry = new xdr.SorobanAuthorizationEntry({
     credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
     rootInvocation: new xdr.SorobanAuthorizedInvocation({ function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(args), subInvocations: opts.subs ?? [] }),
@@ -57,6 +57,8 @@ const EXPECTED_ESCROW = xdr.ScVal.scvSymbol("escrow-actual");
 
 /** Cadena simulada: registra los builds (lo que firma una passkey contra el contrato de TW). */
 let onChain: { flags: Escrow["flags"]; milestones: Escrow["milestones"] } | null = null;
+/** Transacciones "incluidas en un ledger" que devuelve getTransaction (por hash). */
+const confirmed: Record<string, ConfirmedTransaction> = {};
 function fakeChain() {
   const builds: Array<{ contractId: string; fn: string; args: xdr.ScVal[]; signer: string }> = [];
   const chain: Chain = {
@@ -85,6 +87,9 @@ function fakeChain() {
     },
     async wasmHashOf(contractId) {
       return contractId === ESCROW ? TW_ESCROW_WASM_TESTNET : null;
+    },
+    async getTransaction(hash) {
+      return confirmed[hash] ?? null;
     },
   };
   return { chain, builds };
@@ -133,18 +138,18 @@ function fakeTw(escrows: Escrow[] = [escrow()]) {
     if (url.pathname in signerOf) {
       const source = signerOf[url.pathname];
       if (!source || !StrKey.isValidEd25519PublicKey(source)) return Response.json({ statusCode: 400, message: "invalid version byte" }, { status: 400 });
-      return Response.json({ unsignedTransaction: deployXdr(url.pathname.split("/").pop()!.replace(/-/g, "_"), source) });
+      return Response.json({ unsignedTransaction: deployXdr(url.pathname.split("/").pop()!.replace(/-/g, "_"), source, body?.contractId ?? TW_DEPLOYER_TESTNET) });
     }
     return Response.json({ statusCode: 404, message: `sin ruta ${url.pathname}` }, { status: 404 });
   };
   return { twFetch, calls };
 }
 
-function setup(env: Record<string, string> = {}, escrows?: Escrow[]) {
+function setup(env: Record<string, string> = {}, escrows?: Escrow[], opts: { now?: () => number; dep?: typeof deployments } = {}) {
   const { twFetch, calls } = fakeTw(escrows);
   const { chain, builds } = fakeChain();
-  const cfg = loadConfigFromEnv({ TW_API_KEY: "tw-key", ...env }, deployments);
-  const app = createApp(cfg, { chain, now: () => 0, twFetch });
+  const cfg = loadConfigFromEnv({ TW_API_KEY: "tw-key", ...env }, opts.dep ?? deployments);
+  const app = createApp(cfg, { chain, now: opts.now ?? (() => 0), twFetch });
   const get = (p: string) => app.request(`/api${p}`);
   const post = (p: string, body: unknown) => app.request(`/api${p}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return { app, calls, builds, get, post };
@@ -449,9 +454,168 @@ describe("plan A: resolver y repartir el rendimiento (staff)", () => {
 
   it("lo que TW no tiene responde 501 con el sustituto", async () => {
     const { post } = setup();
-    for (const a of ["assign-expert", "record-report", "claim-timeout", "claim-review-timeout"]) {
+    for (const a of ["assign-expert", "record-report", "claim-review-timeout"]) {
       const res = await post(`/fianzas/v1/fianzas/${ESCROW}/${a}`, { signer: STAFF });
       expect([a, res.status, (await json(res)).code]).toEqual([a, 501, "FZ_ENDPOINT_NOT_SUPPORTED"]);
+    }
+  });
+});
+
+describe("plan A: liberación a plazo (#115, claim-timeout)", () => {
+  const STAFF = deployments.staff[0]!;
+  const END = 1_700_000_000; // endTs de la fianza
+  const TIMEOUT = 120;
+  const CLAIMABLE = END + TIMEOUT;
+  const env = { TW_CLAIM_TIMEOUT_SECS: String(TIMEOUT) };
+  const after = () => (CLAIMABLE + 10) * 1000; // now en ms, plazo vencido
+  const before = () => (CLAIMABLE - 10) * 1000;
+  const withDeadline = (over: Partial<Escrow> = {}) => escrow({ engagementId: `fianza-7-end${END}`, ...over });
+  const stopped = (over: Partial<Escrow> = {}) => withDeadline({ flags: { disputed: true, released: false, resolved: false }, ...over });
+  const DISPUTE_HASH = "ab".repeat(32);
+  const claimPath = `/fianzas/v1/fianzas/${ESCROW}/claim-timeout`;
+  /** Deja en la cadena simulada una disputa confirmada sobre `contract` abierta por `signer`. */
+  function confirm(hash: string, over: Partial<ConfirmedTransaction> & { signer?: string; contract?: string; fn?: string } = {}) {
+    const { signer = TENANT, contract = ESCROW, fn = "dispute_escrow", ...rest } = over;
+    const envelope = TransactionBuilder.fromXDR(deployXdr(fn, deployments.readSource, contract, { args: [new Address(signer).toScVal()] }), NET);
+    confirmed[hash] = { success: true, ledger: 5, createdAt: CLAIMABLE + 5, envelope, ...rest };
+  }
+  const codeOf = async (r: Response | Promise<Response>) => (await json(await r)).code;
+
+  it("view y terms exponen endTs y claimableAt sacados del engagementId", async () => {
+    const { get } = setup(env, [withDeadline()], { now: after });
+    const v = await json(await get(`/fianzas/v1/fianzas/${ESCROW}/view`));
+    expect(v).toMatchObject({ endTs: END, claimableAt: CLAIMABLE, claimTimeoutSecs: TIMEOUT, claimable: true });
+    const t = await json(await get(`/fianzas/v1/fianzas/${ESCROW}/terms`));
+    expect(t).toMatchObject({ endTs: END, claimableAt: CLAIMABLE });
+    // Sin -end<endTs> no hay plazo; con el plazo sin vencer no es reclamable.
+    expect(await json(await setup(env).get(`/fianzas/v1/fianzas/${ESCROW}/view`))).toMatchObject({ endTs: null, claimableAt: null, claimable: false });
+    expect(await json(await setup(env, [withDeadline()], { now: before }).get(`/fianzas/v1/fianzas/${ESCROW}/view`))).toMatchObject({ claimable: false });
+  });
+
+  it("crear con endTs lo codifica en el engagementId", async () => {
+    const { post, calls } = setup(env);
+    const res = await post("/fianzas/v1/fianzas", { landlord: LANDLORD, tenant: TENANT, amount: 500, fianzaId: "hab-3", endTs: END });
+    expect(res.status).toBe(200);
+    expect((await json(res)).engagementId).toBe(`fianza-hab-3-end${END}`);
+    expect(calls.find((c) => c.path === "/deployer/single-release")!.body.engagementId).toBe(`fianza-hab-3-end${END}`);
+  });
+
+  it("rechaza sin plazo, sin vencer, con aprobación del casero o si no llama el inquilino", async () => {
+    const noDeadline = await setup(env, [escrow()], { now: after }).post(claimPath, { signer: TENANT });
+    expect([noDeadline.status, (await json(noDeadline)).code]).toEqual([422, "FZ_NO_DEADLINE"]);
+    const early = await setup(env, [withDeadline()], { now: before }).post(claimPath, { signer: TENANT });
+    expect([early.status, (await json(early)).code]).toEqual([409, "FZ_TIMEOUT_NOT_REACHED"]);
+    const approved = withDeadline({ milestones: [{ description: "x", status: "approved", evidence: "", approved: true }] });
+    const done = await setup(env, [approved], { now: after }).post(claimPath, { signer: TENANT });
+    expect([done.status, (await json(done)).code]).toEqual([409, "FZ_ALREADY_APPROVED"]);
+    const landlord = await setup(env, [withDeadline()], { now: after }).post(claimPath, { signer: LANDLORD });
+    expect([landlord.status, (await json(landlord)).code]).toEqual([422, "FZ_NOT_PARTY"]);
+  });
+
+  it("paso 1: con la fianza activa construye dispute_escrow para el inquilino (passkey → cadena, G → TW)", async () => {
+    const { post, builds } = setup(env, [withDeadline()], { now: after });
+    const res = await post(claimPath, { signer: TENANT });
+    expect(res.status).toBe(200);
+    const b = await json(res);
+    expect(b).toMatchObject({ step: "dispute", claimableAt: CLAIMABLE, soroban: { auth: ["a"] } });
+    expect(builds).toEqual([{ contractId: ESCROW, fn: "dispute_escrow", args: [new Address(TENANT).toScVal()], signer: TENANT }]);
+
+    const g = Keypair.random().publicKey();
+    const viaTw = setup(env, [withDeadline({ roles: { ...escrow().roles, receiver: g, releaseSigner: g } })], { now: after });
+    const r2 = await json(await viaTw.post(claimPath, { signer: g }));
+    expect(r2.step).toBe("dispute");
+    expect(TransactionBuilder.fromXDR(r2.unsignedXdr, NET)).toMatchObject({ source: g });
+    expect(viaTw.calls.find((c) => c.path.includes("dispute-escrow"))!.body).toEqual({ contractId: ESCROW, signer: g });
+  });
+
+  it("paso 2 exige disputeTxHash y que sea la disputa del inquilino, sobre esta fianza y tras el plazo", async () => {
+    const { post } = setup(env, [stopped()], { now: after });
+    const claim = (body: Record<string, unknown>) => post(claimPath, { signer: TENANT, ...body });
+    expect((await claim({})).status).toBe(400);
+    expect(await codeOf(claim({ disputeTxHash: "00".repeat(32) }))).toBe("FZ_CLAIM_NOT_VERIFIED"); // no existe
+    try {
+      confirm(DISPUTE_HASH, { signer: LANDLORD });
+      expect(await codeOf(claim({ disputeTxHash: DISPUTE_HASH }))).toBe("FZ_CLAIM_NOT_VERIFIED"); // la abrió el casero
+      confirm(DISPUTE_HASH, { createdAt: CLAIMABLE - 1 });
+      expect(await codeOf(claim({ disputeTxHash: DISPUTE_HASH }))).toBe("FZ_CLAIM_NOT_VERIFIED"); // antes del plazo: perito
+      confirm(DISPUTE_HASH, { contract: OTHER_CONTRACT });
+      expect(await codeOf(claim({ disputeTxHash: DISPUTE_HASH }))).toBe("FZ_CLAIM_NOT_VERIFIED");
+      confirm(DISPUTE_HASH, { fn: "fund_escrow" });
+      expect(await codeOf(claim({ disputeTxHash: DISPUTE_HASH }))).toBe("FZ_CLAIM_NOT_VERIFIED");
+      confirm(DISPUTE_HASH, { success: false });
+      expect(await codeOf(claim({ disputeTxHash: DISPUTE_HASH }))).toBe("FZ_CLAIM_NOT_VERIFIED");
+    } finally {
+      delete confirmed[DISPUTE_HASH];
+    }
+  });
+
+  it("paso 2 sin STAFF_SECRET: devuelve el resolve con deducción 0 para que lo firme el staff", async () => {
+    confirm(DISPUTE_HASH);
+    try {
+      const { post, calls } = setup(env, [stopped()], { now: after });
+      const b = await json(await post(claimPath, { signer: TENANT, disputeTxHash: DISPUTE_HASH }));
+      expect(b).toMatchObject({ step: "resolve", signed: false, signer: STAFF, distributions: [{ address: TENANT, amount: "500.0000000" }] });
+      expect(TransactionBuilder.fromXDR(b.unsignedXdr, NET)).toMatchObject({ source: STAFF });
+      expect(calls.find((c) => c.path.includes("resolve-dispute"))!.body).toEqual({ contractId: ESCROW, disputeResolver: STAFF, distributions: [{ address: TENANT, amount: 500 }] });
+      expect(calls.some((c) => c.path.includes("send-transaction"))).toBe(false);
+    } finally {
+      delete confirmed[DISPUTE_HASH];
+    }
+  });
+
+  it("paso 2 con STAFF_SECRET: el servidor firma el resolve, lo envía por TW y reparte el sobrante", async () => {
+    const staffKp = Keypair.random();
+    const dep = { ...deployments, staff: [staffKp.publicKey()] };
+    const esc = stopped({ roles: { ...escrow().roles, disputeResolver: staffKp.publicKey() } });
+    confirm(DISPUTE_HASH);
+    balances[ESCROW] = 0.0001;
+    try {
+      const { post, calls } = setup({ ...env, STAFF_SECRET: staffKp.secret(), TW_PLATFORM_FEE_BPS: "2000" }, [esc], { now: after, dep });
+      const res = await post(claimPath, { signer: TENANT, disputeTxHash: DISPUTE_HASH });
+      expect(res.status).toBe(200);
+      const b = await json(res);
+      expect(b).toMatchObject({ step: "done", remaining: "0.0001000", distributions: [{ address: TENANT, amount: "500.0000000" }] });
+      expect(b.resolvedTx).toMatch(/^[0-9a-f]{64}$/);
+      expect(b.distributedTx).toMatch(/^[0-9a-f]{64}$/);
+      const sent = calls.filter((c) => c.path.includes("send-transaction")).map((c) => TransactionBuilder.fromXDR(c.body.signedXdr, NET) as Transaction);
+      expect(sent).toHaveLength(2);
+      for (const tx of sent) {
+        expect(tx.source).toBe(staffKp.publicKey());
+        expect(tx.signatures).toHaveLength(1);
+        expect(staffKp.verify(tx.hash(), tx.signatures[0]!.signature())).toBe(true);
+      }
+      expect(calls.find((c) => c.path.includes("withdraw-remaining-funds"))!.body.distributions).toEqual([
+        { address: deployments.treasury, amount: 0.00002 },
+        { address: LANDLORD, amount: 0.00008 },
+      ]);
+    } finally {
+      delete confirmed[DISPUTE_HASH];
+      delete balances[ESCROW];
+    }
+  });
+
+  it("con STAFF_SECRET de otra cuenta no firma nada", async () => {
+    confirm(DISPUTE_HASH);
+    try {
+      const { post, calls } = setup({ ...env, STAFF_SECRET: Keypair.random().secret() }, [stopped()], { now: after });
+      const res = await post(claimPath, { signer: TENANT, disputeTxHash: DISPUTE_HASH });
+      expect([res.status, (await json(res)).code]).toEqual([500, "FZ_STAFF_KEY_MISMATCH"]);
+      expect(calls.some((c) => c.path.includes("send-transaction"))).toBe(false);
+    } finally {
+      delete confirmed[DISPUTE_HASH];
+    }
+  });
+
+  it("paso 3 suelto: resuelta y con sobrante, reparte; sin sobrante, done", async () => {
+    const resolved = withDeadline({ flags: { disputed: true, released: false, resolved: true } });
+    const none = await json(await setup(env, [resolved], { now: after }).post(claimPath, { signer: TENANT }));
+    expect(none).toMatchObject({ step: "done", remaining: "0.0000000", distributedTx: null });
+    balances[ESCROW] = 0.0001;
+    try {
+      const b = await json(await setup(env, [resolved], { now: after }).post(claimPath, { signer: TENANT }));
+      expect(b).toMatchObject({ step: "distribute", signed: false, signer: STAFF, remaining: "0.0001000" });
+    } finally {
+      delete balances[ESCROW];
     }
   });
 });
