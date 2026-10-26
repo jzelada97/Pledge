@@ -1,1 +1,181 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    /* SF on Apple devices, Inter (next/font) everywhere else */
+    --font-heading: -apple-system, BlinkMacSystemFont, "SF Pro Display", var(--font-inter), system-ui, sans-serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-inter), system-ui, sans-serif;
+    --font-mono: var(--font-mono);
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-highlight: var(--highlight);
+    --color-highlight-foreground: var(--highlight-foreground);
+    --color-highlight-soft: var(--highlight-soft);
+    --color-highlight-text: var(--highlight-text);
+    --color-success: var(--success);
+    --color-warning: var(--warning);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+    /* Pledge theme: Fuzz "Calm Utility" with an Apple glass layer (see DESIGN.md), coloured from the logo:
+       teal primary (same hue as the "p"), the logo's ink #0D121F for text and dark tiles, teal-tinted neutrals,
+       and apricot (teal's complement) as a sparing accent. Text tokens are >= 4.5:1 (WCAG AA) on their surfaces. */
+    --brand: #1EB5A6; /* the logo's teal "p"; logo only, never UI */
+    --background: #F4F7F7;
+    --foreground: #0D121F;
+    --card: #FFFFFF;
+    --card-foreground: #0D121F;
+    --popover: #FFFFFF;
+    --popover-foreground: #0D121F;
+    --primary: #00796E;
+    --primary-foreground: #FFFFFF;
+    --primary-hover: color-mix(in oklch, var(--primary), black 18%);
+    --secondary: #EBF1F0;
+    --secondary-foreground: #0D121F;
+    --muted: #EBF1F0;
+    --muted-foreground: #5B6B69;
+    --accent: #0D121F;
+    --accent-foreground: #FFFFFF;
+    --pass-from: #0D121F;
+    --pass-to: #0B3B3A;
+    /* Apricot: teal's complement on the colour wheel, used sparingly for what needs attention */
+    --highlight: #F6A47C;
+    --highlight-foreground: #0D121F;
+    --highlight-soft: #FDEDE4;
+    --highlight-text: #A84A1B;
+    --pass-note: #FFB089;
+    --destructive: #9B1C1C;
+    --success: #17582F;
+    --warning: oklch(0.41 0.09 65);
+    --border: #DCE5E3;
+    --input: #7A8886;
+    --ring: #169A8E;
+    --chart-1: #00796E;
+    --chart-2: oklch(0.6 0.09 185);
+    --chart-3: oklch(0.41 0.09 160);
+    --chart-4: oklch(0.41 0.09 65);
+    --chart-5: oklch(0.3 0.03 210);
+    --radius: 12px;
+    --sidebar: #EEF3F2;
+    --sidebar-foreground: #0D121F;
+    --sidebar-primary: #00796E;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-accent: #0D121F;
+    --sidebar-accent-foreground: #FFFFFF;
+    --sidebar-border: #DCE5E3;
+    --sidebar-ring: #169A8E;
+}
+
+.dark {
+    /* Dark: ink canvas with a hint of teal, light teal primary. Text tokens stay >= 4.5:1 (AA) on card and muted. */
+    --background: #070B0E;
+    --foreground: #EEF4F3;
+    --card: #10161A;
+    --card-foreground: #EEF4F3;
+    --popover: #10161A;
+    --popover-foreground: #EEF4F3;
+    --primary: #3DD6C6;
+    --primary-foreground: #00201C;
+    --primary-hover: color-mix(in oklch, var(--primary), white 25%);
+    --secondary: #1A2227;
+    --secondary-foreground: #EEF4F3;
+    --muted: #1A2227;
+    --muted-foreground: #97A5A7;
+    --accent: #1A2227;
+    --accent-foreground: #EEF4F3;
+    --pass-from: #10161A;
+    --pass-to: #0B3B3A;
+    --highlight: #FFB089;
+    --highlight-foreground: #0D121F;
+    --highlight-soft: #2A1E19;
+    --highlight-text: #FFB089;
+    --pass-note: #FFB089;
+    --destructive: #FF9F99;
+    --success: #7BD69A;
+    --warning: oklch(0.85 0.11 80);
+    --border: #283136;
+    --input: #84918F;
+    --ring: #1EB5A6;
+    --chart-1: #3DD6C6;
+    --chart-2: oklch(0.65 0.08 190);
+    --chart-3: oklch(0.82 0.11 160);
+    --chart-4: oklch(0.85 0.11 80);
+    --chart-5: oklch(0.9 0.01 200);
+    --sidebar: #0C1215;
+    --sidebar-foreground: #EEF4F3;
+    --sidebar-primary: #3DD6C6;
+    --sidebar-primary-foreground: #00201C;
+    --sidebar-accent: #1A2227;
+    --sidebar-accent-foreground: #EEF4F3;
+    --sidebar-border: #283136;
+    --sidebar-ring: #1EB5A6;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+    }
+  html {
+    @apply font-sans;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Frosted surfaces go solid for people who ask for less transparency */
+@media (prefers-reduced-transparency: reduce) {
+  [data-glass] {
+    background-color: var(--card) !important;
+    backdrop-filter: none !important;
+  }
+}

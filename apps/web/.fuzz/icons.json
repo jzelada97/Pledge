@@ -1,0 +1,27 @@
+{
+  "primary": {
+    "library": "Lucide",
+    "id": "lucide",
+    "package": "lucide-react",
+    "license": "ISC",
+    "variant": "stroke",
+    "strokeWidth": 1.5,
+    "note": "Fuzz calm-utility's declared fallback; Phosphor light is the style default."
+  },
+  "size": 20,
+  "strokeWidth": 1.5,
+  "linecap": "round",
+  "linejoin": "round",
+  "fill": "none — outline only; never mix fill",
+  "names": {
+    "lock": "lock",
+    "clock": "clock",
+    "settings": "settings",
+    "user": "user",
+    "search": "search",
+    "close": "x",
+    "check": "check",
+    "alert": "triangle-alert",
+    "arrow": "arrow-right"
+  }
+}

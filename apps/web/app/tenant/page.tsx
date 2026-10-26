@@ -1,69 +1,55 @@
-import { SignButton } from "@/components/sign-button";
-import { Box, Note, Row, Screen, Tag } from "@/components/wire";
-import { DEPOSITS, ME_TENANT, type DepositRow } from "@/lib/fixtures";
-import { STATUS_LABEL, date, money, nowSecs } from "@/lib/format";
-import { breakdown, split } from "@/lib/split";
-import { yieldGoesTo } from "@/lib/yield-policy";
+import { InboxIcon } from "lucide-react";
+import Link from "next/link";
+import { DepositPass } from "@/components/deposit-pass";
+import { TenantShell } from "@/components/tenant-shell";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { getI18n } from "@/lib/i18n/server";
+import { myDeposits, tenantView } from "@/lib/tenant-deposit";
 
 export const dynamic = "force-dynamic"; // dates are relative to now
 
-// Tenant home: factory.list_by_tenant → get_fianzas. Mobile-first (375 px).
-export default function TenantHome() {
-  const mine = DEPOSITS.filter((d) => d.data.tenant === ME_TENANT);
-  return (
-    <Screen title="My deposits" back="/" narrow>
-      {mine.map((d) => (
-        <DepositCard key={d.id.toString()} d={d} />
-      ))}
-    </Screen>
-  );
-}
-
-function DepositCard({ d }: { d: DepositRow }) {
-  const { terms, approvals, settlement } = d.data;
-  const s = settlement ?? split(terms.amount, terms.amount + d.accrued_yield, 0n, terms.platform_fee_bps, terms.tenant_yield_bps);
-  const b = breakdown(s, terms.amount);
-  const iApproved = approvals.approved_by.includes(ME_TENANT);
-  const live = d.status === "Active" || d.status === "Ending";
-  const canClaim = live && nowSecs() > d.timeout_at;
+// Tenant home: factory.list_by_tenant → get_fianzas. Mobile-first (375 px). Each deposit is a Wallet-style
+// pass; tapping it opens the deposit and its actions.
+export default async function TenantHome({ searchParams }: PageProps<"/tenant">) {
+  const { view } = await searchParams; // ?view=empty previews the empty state
+  const i18n = await getI18n();
+  const { t } = i18n;
+  const mine = view === "empty" ? [] : myDeposits();
 
   return (
-    <Box title={`Deposit #${d.id}`}>
-      <Tag>{STATUS_LABEL[d.status]}</Tag>
-      <Row label="Your deposit" value={money(terms.amount)} />
-      {terms.tenant_yield_bps > 0 ? (
-        <Row label={settlement ? "Your yield" : "Your yield so far (variable)"} value={money(b.tenantYield)} />
+    <TenantShell>
+      <header className="space-y-1">
+        <h1 className="text-4xl font-bold tracking-tight">{t.tenant.title}</h1>
+        <p className="text-muted-foreground">{t.tenant.lead}</p>
+      </header>
+      {mine.length === 0 ? (
+        <Empty className="rounded-2xl bg-card ring-1 ring-foreground/8">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <InboxIcon aria-hidden />
+            </EmptyMedia>
+            <EmptyTitle>{t.tenant.empty.title}</EmptyTitle>
+            <EmptyDescription>{t.tenant.empty.body}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
-        <Row label="The yield goes to" value={yieldGoesTo(terms.tenant_yield_bps, "tenant")} />
+        <ul className="flex flex-col gap-5">
+          {mine.map((d) => {
+            const v = tenantView(d, i18n);
+            return (
+              <li key={d.id.toString()}>
+                <Link
+                  href={`/tenant/deposits/${d.id}`}
+                  aria-label={[t.landlord.rowLabel(d.id.toString(), v.pass.amount, v.pass.statusLabel), v.todo].filter(Boolean).join(". ")}
+                  className="block rounded-[1.25rem] transition-transform focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none active:scale-[.98]"
+                >
+                  <DepositPass {...v.pass} note={v.todo} />
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
       )}
-      <Row label="Contract ends" value={date(terms.end_ts)} />
-      {terms.strategy.simulated && <Tag>Simulated yield</Tag>}
-
-      {live && !iApproved && <SignButton label="Approve release" />}
-      {live && iApproved && <p className="text-sm">You approved. Waiting for your landlord.</p>}
-      {live && (
-        <>
-          <SignButton label="Claim my deposit" disabled={!canClaim} />
-          {!canClaim && (
-            <Note>If your landlord doesn&apos;t respond, you can claim 100 % from {date(d.timeout_at)}.</Note>
-          )}
-        </>
-      )}
-
-      {(d.status === "Stopped" || d.status === "UnderReview") && (
-        <Note>
-          Your landlord stopped the release and an expert is reviewing it. If the staff doesn&apos;t decide by{" "}
-          {date(d.review_deadline)}, you get your deposit back in full.
-        </Note>
-      )}
-
-      {d.status === "Settled" && (
-        <>
-          <Row label="You received" value={money(s.to_tenant)} />
-          <Tag>Simulated bank transfer</Tag>
-          <SignButton label="Send to my bank" />
-        </>
-      )}
-    </Box>
+    </TenantShell>
   );
 }

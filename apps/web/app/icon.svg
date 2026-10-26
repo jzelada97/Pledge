@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <!-- Mask content lives in the masked group's (already scaled) coordinates -->
+    <mask id="keyhole">
+      <rect width="1024" height="558" fill="#FFFFFF" />
+      <circle cx="171" cy="285" r="25" fill="#000000" />
+      <path d="M 159 298 L 183 298 L 193 356 C 194 360 191 363 187 363 L 155 363 C 151 363 148 360 149 356 Z" fill="#000000" />
+    </mask>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0D121F" />
+  <g transform="translate(-5.6 -45.45) scale(0.22)">
+    <g mask="url(#keyhole)" fill="#1EB5A6">
+      <path d="M 88 313 L 126 313 L 126 458 C 126 467 119 474 110 474 L 104 474 C 95 474 88 467 88 458 Z" />
+      <circle cx="171" cy="313" r="83" />
+    </g>
+  </g>
+</svg>

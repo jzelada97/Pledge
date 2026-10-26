@@ -1,54 +1,82 @@
+import { BellIcon, ChevronRightIcon, LandmarkIcon, SproutIcon } from "lucide-react";
 import Link from "next/link";
-import { LinkBtn, Note, Screen, Tag } from "@/components/wire";
+import { DevNote } from "@/components/dev-note";
+import { Group } from "@/components/grouped";
+import { PaneBody, PaneToolbar } from "@/components/pane";
+import { StatusLine } from "@/components/status-badge";
 import { DEPOSITS } from "@/lib/fixtures";
-import { STATUS_LABEL, daysFromNow, money } from "@/lib/format";
-import { STRATEGY_COPY } from "@/lib/strategies";
+import { getI18n } from "@/lib/i18n/server";
+import { landlordList, needsAction } from "@/lib/landlord-list";
+import { cn } from "@/lib/utils";
 
-export const dynamic = "force-dynamic"; // "in N days" must be computed per request, not at build time
+export const dynamic = "force-dynamic";
 
-export default function LandlordDashboard() {
+// Desktop detail pane with no deposit selected: the totals and what needs an answer.
+// On phones this pane is hidden and /landlord shows the list instead.
+export default async function LandlordOverview() {
+  const i18n = await getI18n();
+  const { t, f } = i18n;
+  const o = t.landlord.overview;
+  const { summary } = landlordList(i18n);
+  const waiting = DEPOSITS.filter(needsAction);
+  const stats = [
+    { icon: LandmarkIcon, label: t.landlord.held, value: summary.held, hint: o.heldHint(summary.heldCount) },
+    { icon: SproutIcon, label: t.landlord.yieldSoFar, value: summary.yieldSoFar, hint: t.landlord.estimatedVariable },
+    { icon: BellIcon, label: o.answer, value: String(summary.answer), hint: o.answerHint },
+  ];
+
   return (
-    <Screen title="My deposits" back="/">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-neutral-600">{DEPOSITS.length} deposits</p>
-        <LinkBtn href="/landlord/new">New deposit</LinkBtn>
-      </div>
-      <Note>
-        Data: factory.list_by_landlord → get_fianzas (25 per page, no vault calls). Live yield = shares × price per
-        share, one read per vault, refreshed every 5 s.
-      </Note>
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr className="border-b-2 border-neutral-300 text-left text-neutral-500">
-            <th className="py-2">#</th>
-            <th>Status</th>
-            <th>Deposit</th>
-            <th>Yield so far (estimated)</th>
-            <th>Contract end</th>
-            <th>Tenant can claim</th>
-            <th>Strategy</th>
-          </tr>
-        </thead>
-        <tbody>
-          {DEPOSITS.map((d) => (
-            <tr key={d.id.toString()} className="border-b border-dashed border-neutral-300">
-              <td className="py-2">
-                <Link href={`/landlord/deposits/${d.id}`} className="underline">
-                  {d.id.toString()}
-                </Link>
-              </td>
-              <td>
-                <Tag>{STATUS_LABEL[d.status]}</Tag>
-              </td>
-              <td>{money(d.data.terms.amount)}</td>
-              <td>{d.status === "Proposed" || d.status === "Settled" ? "—" : `${money(d.accrued_yield)}, variable`}</td>
-              <td>{daysFromNow(d.data.terms.end_ts)}</td>
-              <td>{d.status === "Active" || d.status === "Ending" ? daysFromNow(d.timeout_at) : "—"}</td>
-              <td>{STRATEGY_COPY[d.data.terms.strategy.id].name}</td>
-            </tr>
+    <>
+      <PaneToolbar title={o.title} />
+      <PaneBody>
+        <dl className="grid gap-4 sm:grid-cols-2">
+          {stats.map((s, i) => (
+            <div
+              key={s.label}
+              className={cn("space-y-1 rounded-2xl p-6", i === 0 ? "bg-accent text-accent-foreground sm:col-span-2" : i === 2 && summary.answer > 0 ? "bg-highlight-soft ring-1 ring-highlight/50" : "bg-card ring-1 ring-foreground/8")}
+            >
+              <dt className="flex items-center gap-2 text-sm font-medium">
+                <s.icon className={cn("size-4", i === 2 && summary.answer > 0 && "text-highlight-text")} aria-hidden />
+                {s.label}
+              </dt>
+              <dd className={i === 0 ? "text-5xl font-semibold tracking-tight tabular-nums" : "text-3xl font-semibold tracking-tight tabular-nums"}>
+                {s.value}
+              </dd>
+              <dd className={i === 0 ? "text-sm" : "text-sm text-muted-foreground"}>{s.hint}</dd>
+            </div>
           ))}
-        </tbody>
-      </table>
-    </Screen>
+        </dl>
+
+        {waiting.length > 0 && (
+          <Group title={o.needsAnswer} footer={o.needsAnswerFooter}>
+            <ul className="divide-y">
+              {waiting.map((d) => (
+                <li key={d.id.toString()}>
+                  <Link
+                    href={`/landlord/deposits/${d.id}?show=answer`}
+                    className="-mx-4 flex min-h-14 items-center gap-3 px-4 py-3 hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  >
+                    <span className="flex-1">
+                      <span className="block font-semibold">
+                        {t.common.deposit(d.id.toString())} · {f.money(d.data.terms.amount)}
+                      </span>
+                      <StatusLine status={d.status} />
+                    </span>
+                    <span className="text-sm text-muted-foreground">{o.tenantCanClaim(f.daysFromNow(d.timeout_at))}</span>
+                    <ChevronRightIcon className="size-4 text-muted-foreground" aria-hidden />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Group>
+        )}
+
+        <p className="text-sm text-muted-foreground">{o.disclaimer}</p>
+        <DevNote>
+          Data: factory.list_by_landlord → get_fianzas (25 per page, no vault calls). Live yield = shares × price per share,
+          one read per vault, refreshed every 5 s.
+        </DevNote>
+      </PaneBody>
+    </>
   );
 }

@@ -1,43 +1,32 @@
 "use client";
 
-import { useState } from "react";
-import { Btn } from "./wire";
+import { CheckIcon } from "lucide-react";
+import type { ComponentProps } from "react";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { useSign } from "@/lib/use-sign";
 
-type Phase = "idle" | "signing" | "sending" | "done" | "error";
+type Props = {
+  label: string;
+  success: string;
+  fail?: boolean;
+  onDone?: () => void;
+} & Pick<ComponentProps<typeof Button>, "variant" | "size" | "disabled" | "className">;
 
-const PHASE_TEXT: Record<Exclude<Phase, "idle">, string> = {
-  signing: "Confirm with Face ID…",
-  sending: "Sending…",
-  done: "Done",
-  error: "We couldn't send it. Check your connection and try again.",
-};
-
-// Every signing action shows three states: signing (Face ID), sending, and done or an error that says
-// what to do. Fake timings for now; the real phases come from packages/wallet signAndSend.
-export function SignButton(props: { label: string; disabled?: boolean; fail?: boolean }) {
-  const [phase, setPhase] = useState<Phase>("idle");
-
-  function run() {
-    setPhase("signing");
-    setTimeout(() => setPhase("sending"), 1000);
-    setTimeout(() => setPhase(props.fail ? "error" : "done"), 2000);
-  }
+export function SignButton({ label, success, fail, onDone, disabled, ...button }: Props) {
+  const { phase, run, busy, phaseText } = useSign({ success, fail, onDone });
+  const done = phase === "done";
 
   return (
     <div className="flex flex-col gap-1">
-      <Btn onClick={run} disabled={props.disabled || phase === "signing" || phase === "sending" || phase === "done"}>
-        {props.label}
-      </Btn>
-      {phase !== "idle" && (
-        <p role="status" className={`text-sm ${phase === "error" ? "text-red-700" : "text-neutral-600"}`}>
-          {PHASE_TEXT[phase]}
-          {phase === "error" && (
-            <button type="button" className="ml-2 underline" onClick={() => setPhase("idle")}>
-              Try again
-            </button>
-          )}
-        </p>
-      )}
+      <Button {...button} onClick={run} disabled={disabled || busy || done} aria-busy={busy}>
+        {busy && <Spinner data-icon="inline-start" aria-hidden />}
+        {done && <CheckIcon data-icon="inline-start" aria-hidden />}
+        {busy || done ? phaseText : label}
+      </Button>
+      <p role="status" aria-live="polite" className="sr-only">
+        {phaseText}
+      </p>
     </div>
   );
 }

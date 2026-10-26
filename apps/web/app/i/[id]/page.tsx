@@ -1,74 +1,83 @@
+import { LinkIcon } from "lucide-react";
 import { notFound } from "next/navigation";
-import { SignButton } from "@/components/sign-button";
-import { Box, Note, Row, Screen, Tag } from "@/components/wire";
+import { DetailList, DetailRow } from "@/components/detail-list";
+import { InvitationFlow } from "@/components/invitation-flow";
+import { TenantShell } from "@/components/tenant-shell";
+import { Badge } from "@/components/ui/badge";
+import { Group } from "@/components/grouped";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { depositById } from "@/lib/fixtures";
-import { date, money, percent } from "@/lib/format";
-import { RISK_LABEL, STRATEGY_COPY } from "@/lib/strategies";
+import { getI18n } from "@/lib/i18n/server";
 import { yieldGoesTo } from "@/lib/yield-policy";
 
 // Tenant invitation: /i/<id>#c=<code>. Everything shown is read from the chain (get_terms + config),
 // never from the URL (WEB-11 v2). The id resolves to the escrow with factory.escrow_of(id).
-export default async function Invitation({ params }: PageProps<"/i/[id]">) {
+export default async function Invitation({ params, searchParams }: PageProps<"/i/[id]">) {
   const { id } = await params;
+  const { check } = await searchParams; // ?check=fail previews the WEB-14 mismatch state
   const d = depositById(id);
   if (!d) notFound();
+  const { t, f } = await getI18n();
+  const x = t.invitation;
 
   if (d.status !== "Proposed") {
     return (
-      <Screen title="This link is no longer valid" back="/" narrow>
-        <p className="text-sm text-neutral-600">Ask your landlord to send you a new invitation.</p>
-      </Screen>
+      <TenantShell>
+        <Empty className="rounded-2xl bg-card ring-1 ring-foreground/8">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <LinkIcon aria-hidden />
+            </EmptyMedia>
+            <EmptyTitle>{x.invalid.title}</EmptyTitle>
+            <EmptyDescription>{x.invalid.body}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </TenantShell>
     );
   }
 
   const { terms } = d.data;
-  const copy = STRATEGY_COPY[terms.strategy.id];
+  const copy = t.strategies[terms.strategy.id];
   const reviewDays = Number(terms.review_timeout_secs) / 86_400;
 
   return (
-    <Screen title="Your room deposit" back="/" narrow>
-      <Box title="What you're agreeing to">
-        <Row label="Deposit" value={money(terms.amount)} />
-        <Row label="Contract ends" value={date(terms.end_ts)} />
-        <Row label="You get it back in full" value="When you and your landlord approve" />
-        <Row label="If your landlord doesn't respond" value={`You can claim it from ${date(d.timeout_at)}`} />
-        <Row label="The yield after the platform fee goes to" value={yieldGoesTo(terms.tenant_yield_bps, "tenant")} />
-        <Row label="Platform fee (on the yield only)" value={percent(terms.platform_fee_bps)} />
-        <Row label="Your landlord pays to stop the release" value={money(terms.stop_bond)} />
-        <Row label="If stopped, decided by" value={`Fianzas staff, within ${reviewDays} days`} />
-      </Box>
+    <TenantShell>
+      <InvitationFlow
+        amount={f.money(terms.amount)}
+        termsMatch={check !== "fail"}
+        simulatedRamp
+        review={
+          <>
+            <header className="space-y-2 pt-2 text-center">
+              <p className="text-sm font-medium text-muted-foreground">{x.yourDeposit}</p>
+              <h1 className="text-5xl font-semibold tracking-tight tabular-nums">{f.money(terms.amount)}</h1>
+              <p className="text-muted-foreground">{x.backInFull}</p>
+            </header>
 
-      <Box title="Where your deposit is kept">
-        <div className="flex flex-wrap gap-1">
-          <Tag>{copy.name}</Tag>
-          <Tag>{RISK_LABEL[terms.strategy.risk]}</Tag>
-          {terms.strategy.simulated && <Tag>Simulated yield</Tag>}
-        </div>
-        <p className="text-sm">{copy.apy}</p>
-        <p className="text-sm text-neutral-600">{copy.risks}</p>
-      </Box>
+            <Group title={x.agreeing}>
+              <DetailList>
+                <DetailRow label={x.deposit} value={f.money(terms.amount)} strong />
+                <DetailRow label={x.contractEnds} value={f.date(terms.end_ts)} />
+                <DetailRow label={x.noResponse} value={x.claimFrom(f.date(d.timeout_at))} />
+                <DetailRow label={x.yieldGoesTo} value={yieldGoesTo(t, f, terms.tenant_yield_bps, "tenant")} />
+                <DetailRow label={x.platformFee} value={f.percent(terms.platform_fee_bps)} />
+                <DetailRow label={x.stopCost} value={f.money(terms.stop_bond)} />
+                <DetailRow label={x.decidedBy} value={x.staffWithin(reviewDays)} />
+              </DetailList>
+            </Group>
 
-      <Box title="1 · Sign in or create your account">
-        <SignButton label="Continue with Face ID" />
-        <p className="text-sm text-neutral-600">
-          Already have an account? Face ID signs you in. New here? We create one for you. No app to install, no fees.
-        </p>
-        <Note>wallet.connect() first (silent reconnect); if it returns null, wallet.createAccount().</Note>
-      </Box>
-
-      <Box title="2 · Add the money from your bank">
-        <Tag>Simulated bank deposit</Tag>
-        <SignButton label={`Add ${money(terms.amount)} from my bank`} />
-        <Note>Shows the &quot;Simulated&quot; label while anchor.isSimulated is true.</Note>
-      </Box>
-
-      <Box title="3 · Accept and pay the deposit">
-        <SignButton label="Accept and pay" />
-        <Note>
-          Before asking for Face ID we check these terms match the platform&apos;s (WEB-14). If not, we block it and show:
-          &quot;These terms don&apos;t match the platform&apos;s.&quot;
-        </Note>
-      </Box>
-    </Screen>
+            <Group title={x.whereKept} footer={copy.risks}>
+              <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 py-3 text-sm">
+                <span className="font-medium">{copy.name}</span>
+                <span className="flex flex-wrap gap-2">
+                  <Badge variant="outline">{t.risk[terms.strategy.risk]}</Badge>
+                  {terms.strategy.simulated && <Badge className="bg-warning/10 text-warning">{t.common.simulatedYield}</Badge>}
+                </span>
+              </div>
+            </Group>
+          </>
+        }
+      />
+    </TenantShell>
   );
 }
