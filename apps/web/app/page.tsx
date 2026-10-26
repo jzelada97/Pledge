@@ -9,8 +9,6 @@ import { DAY, nowSecs, toUnits } from "@/lib/format";
 import { getI18n } from "@/lib/i18n/server";
 import { cn } from "@/lib/utils";
 
-const timeoutDays = Number(CONFIG.timeout_secs / DAY);
-const reviewDays = Number(CONFIG.review_timeout_secs / DAY);
 
 // apple.com-style product page: centred headline and two pill actions, the product (a deposit pass) as the
 // hero image, a bento grid of facts, then one panel per side of the deposit.
@@ -68,7 +66,7 @@ export default async function Home() {
             <Tile icon={LandmarkIcon} title={h.bank.title}>
               {h.bank.body}
             </Tile>
-            <Tile dark icon={ScaleIcon} title={h.dispute.title} stat={h.dispute.stat(reviewDays)} statLabel={h.dispute.statLabel}>
+            <Tile dark icon={ScaleIcon} title={h.dispute.title} stat={h.dispute.stat} statLabel={h.dispute.statLabel}>
               {h.dispute.body}
             </Tile>
           </ul>
@@ -82,7 +80,7 @@ export default async function Home() {
             <Side title={h.forLandlords.title} body={h.forLandlords.body} href="/landlord" cta={h.forLandlords.cta} />
             <Side
               title={h.forTenants.title}
-              body={h.forTenants.body(timeoutDays)}
+              body={h.forTenants.body}
               href="/tenant"
               cta={h.forTenants.cta}
               extra={{ href: "/i/1", label: h.forTenants.invite }}

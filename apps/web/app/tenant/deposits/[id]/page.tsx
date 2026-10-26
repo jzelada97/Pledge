@@ -27,14 +27,14 @@ export default async function TenantDeposit({ params }: PageProps<"/tenant/depos
   const x = t.tenant;
   const { terms, settlement } = d.data;
   const v = tenantView(d, i18n);
-  const hasActions = (v.live && (v.canClaim || !v.iApproved)) || d.status === "Settled";
+  const hasActions = (v.live && v.landlordApproved) || d.status === "Settled";
 
   return (
     <TenantShell back={{ href: "/tenant", label: t.common.deposits }}>
       <h1 className="sr-only">{t.common.deposit(id)}</h1>
       <DepositPass {...v.pass} />
 
-      {v.live && v.iApproved && (
+      {v.live && !v.landlordApproved && (
         <p className="flex items-center gap-2 text-sm font-medium">
           <CircleCheckIcon className="size-5 text-success" aria-hidden />
           {x.youApproved}
@@ -44,11 +44,11 @@ export default async function TenantDeposit({ params }: PageProps<"/tenant/depos
         <Alert>
           <OctagonPauseIcon aria-hidden />
           <AlertTitle>{x.stoppedTitle}</AlertTitle>
-          <AlertDescription>{x.stoppedBody(f.date(d.review_deadline))}</AlertDescription>
+          <AlertDescription>{x.stoppedBody}</AlertDescription>
         </Alert>
       )}
 
-      <Group title={x.details} footer={v.live && !v.canClaim ? x.claimFootnote(f.date(d.timeout_at)) : undefined}>
+      <Group title={x.details}>
         <DetailList>
           <DetailRow label={x.yourDeposit} value={f.money(terms.amount)} strong />
           {terms.tenant_yield_bps > 0 ? (
@@ -65,8 +65,7 @@ export default async function TenantDeposit({ params }: PageProps<"/tenant/depos
 
       {hasActions && (
         <BottomBar>
-          {v.live && v.canClaim && <SignButton size="lg" variant="outline" label={x.claim} success={x.claimed} />}
-          {v.live && !v.iApproved && <SignButton size="lg" label={x.approve} success={x.approved} />}
+          {v.live && v.landlordApproved && <SignButton size="lg" label={x.approve} success={x.approved} />}
           {d.status === "Settled" && (
             <>
               <SignButton size="lg" label={x.sendToBank} success={x.sent} fail />

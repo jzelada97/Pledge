@@ -10,7 +10,6 @@ import { StatusBadge } from "@/components/status-badge";
 import { StopDialog } from "@/components/stop-dialog";
 import { Badge } from "@/components/ui/badge";
 import { ME_LANDLORD, depositById } from "@/lib/fixtures";
-import { nowSecs } from "@/lib/format";
 import { getI18n } from "@/lib/i18n/server";
 import { breakdown, split } from "@/lib/split";
 
@@ -26,7 +25,8 @@ export default async function DepositDetail({ params, searchParams }: PageProps<
   const landlordApproved = approvals.approved_by.includes(ME_LANDLORD);
   const tenantApproved = d.data.tenant !== null && approvals.approved_by.includes(d.data.tenant);
   const live = d.status === "Active" || d.status === "Ending";
-  const canStop = live && !landlordApproved && nowSecs() <= d.timeout_at;
+  // Plan A (Trustless Work): el casero puede parar mientras no haya aprobado. Sin depósito por parar ni timeout.
+  const canStop = live && !landlordApproved;
   const s = d.data.settlement ?? split(terms.amount, terms.amount + d.accrued_yield, 0n, terms.platform_fee_bps, terms.tenant_yield_bps);
   const b = breakdown(s, terms.amount);
   const strategy = t.strategies[terms.strategy.id];
@@ -47,7 +47,7 @@ export default async function DepositDetail({ params, searchParams }: PageProps<
       </>
     ) : live && !landlordApproved ? (
       <>
-        {canStop && <StopDialog bond={terms.stop_bond} />}
+        {canStop && <StopDialog />}
         <SignButton label={x.approve} success={x.approved} />
       </>
     ) : undefined;
@@ -66,7 +66,7 @@ export default async function DepositDetail({ params, searchParams }: PageProps<
         </header>
 
         {live && (
-          <Group title={x.release} footer={x.releaseFooter(f.daysFromNow(d.timeout_at))}>
+          <Group title={x.release} footer={x.releaseFooter}>
             <ul className="divide-y">
               {[
                 { who: x.yourTenant, done: tenantApproved },
@@ -86,9 +86,7 @@ export default async function DepositDetail({ params, searchParams }: PageProps<
           <Group title={x.stopped} footer={x.stoppedFooter}>
             <DetailList>
               <DetailRow label={x.stoppedOn} value={f.date(dispute.stopped_ts)} />
-              <DetailRow label={x.bondHeld} value={f.money(dispute.bond_held)} />
               <DetailRow label={x.expertAssigned} value={dispute.expert_ref ? t.common.yes : t.common.notYet} />
-              <DetailRow label={x.staffMustDecide} value={f.daysFromNow(d.review_deadline)} />
             </DetailList>
           </Group>
         )}
@@ -109,8 +107,7 @@ export default async function DepositDetail({ params, searchParams }: PageProps<
             <DetailRow label={x.deposit} value={f.money(terms.amount)} strong />
             <DetailRow label={x.contractEnd} value={`${f.date(terms.end_ts)} (${f.daysFromNow(terms.end_ts)})`} />
             <DetailRow label={x.keptIn} value={strategy.name} />
-            <DetailRow label={x.platformFeeOnYield} value={f.percent(terms.platform_fee_bps)} />
-            <DetailRow label={x.stopBond} value={f.money(terms.stop_bond)} />
+            <DetailRow label={t.invitation.twFee} value={t.invitation.twFeeValue} />
           </DetailList>
         </Group>
       </PaneBody>
