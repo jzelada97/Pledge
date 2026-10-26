@@ -1,50 +1,68 @@
 "use client";
 
-import { useState } from "react";
-import { RISK_LABEL, STRATEGIES, STRATEGY_COPY } from "@/lib/strategies";
-import { Tag } from "./wire";
+import { useId, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { useI18n } from "@/lib/i18n/client";
+import { STRATEGIES } from "@/lib/strategies";
+import { cn } from "@/lib/utils";
 
-export function StrategyPicker(props: { value: string; onChange: (id: string) => void }) {
+// Selectable cards: each is a real radio with its label, so keyboard and screen readers work as a group.
+export function StrategyPicker(props: { value: string; onChange: (id: string) => void; "aria-describedby"?: string }) {
+  const { t } = useI18n();
   const [highRiskAck, setHighRiskAck] = useState(false);
+  const base = useId();
+
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
+    <RadioGroup
+      value={props.value}
+      onValueChange={props.onChange}
+      aria-describedby={props["aria-describedby"]}
+      className="grid gap-4 sm:grid-cols-2"
+    >
       {STRATEGIES.map((s) => {
-        const copy = STRATEGY_COPY[s.id];
+        const copy = t.strategies[s.id];
+        const id = `${base}-${s.id}`;
         const selectable = s.enabled && (s.risk !== "High" || highRiskAck);
         return (
-          <label
+          <div
             key={s.id}
-            className={`flex flex-col gap-1 rounded border-2 p-3 text-sm ${
-              props.value === s.id ? "border-neutral-800" : "border-neutral-300"
-            } ${s.enabled ? "" : "opacity-60"}`}
-          >
-            <span className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="strategy"
-                disabled={!selectable}
-                checked={props.value === s.id}
-                onChange={() => props.onChange(s.id)}
-              />
-              <span className="font-medium">{copy.name}</span>
-            </span>
-            <span className="flex flex-wrap gap-1">
-              <Tag>{RISK_LABEL[s.risk]}</Tag>
-              {s.simulated && <Tag>Simulated yield</Tag>}
-              {s.id === "usdc_fixed" && <Tag>Default</Tag>}
-              {!s.enabled && <Tag>Not available on testnet</Tag>}
-            </span>
-            <span>{copy.apy}</span>
-            <span className="text-neutral-600">{copy.risks}</span>
-            {s.risk === "High" && (
-              <span className="flex items-start gap-1 text-xs">
-                <input type="checkbox" checked={highRiskAck} onChange={(e) => setHighRiskAck(e.target.checked)} />
-                I understand this option has more risk and almost no yield today.
-              </span>
+            className={cn(
+              "flex flex-col gap-3 rounded-xl border bg-card p-4 transition-colors has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:ring-3 has-[[data-state=checked]]:ring-primary/20",
+              !s.enabled && "bg-muted",
             )}
-          </label>
+          >
+            <div className="flex items-start gap-3">
+              <RadioGroupItem value={s.id} id={id} disabled={!selectable} aria-describedby={`${id}-desc`} className="mt-0.5" />
+              <div className="grid gap-1">
+                <Label htmlFor={id} className="text-base font-semibold">
+                  {copy.name}
+                </Label>
+                <p className="text-sm font-medium">{copy.apy}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 pl-7">
+              <Badge variant="outline">{t.risk[s.risk]}</Badge>
+              {s.id === "usdc_fixed" && <Badge variant="secondary">{t.landlord.create.recommended}</Badge>}
+              {s.simulated && <Badge className="bg-warning/10 text-warning">{t.common.simulatedYield}</Badge>}
+              {!s.enabled && <Badge variant="outline">{t.landlord.create.notAvailable}</Badge>}
+            </div>
+            <p id={`${id}-desc`} className="pl-7 text-sm text-muted-foreground">
+              {copy.risks}
+            </p>
+            {s.risk === "High" && (
+              <div className="flex items-start gap-2 pl-7">
+                <Checkbox id={`${id}-ack`} checked={highRiskAck} onCheckedChange={(v) => setHighRiskAck(v === true)} />
+                <Label htmlFor={`${id}-ack`} className="text-sm leading-snug font-normal">
+                  {t.landlord.create.highRiskAck}
+                </Label>
+              </div>
+            )}
+          </div>
         );
       })}
-    </div>
+    </RadioGroup>
   );
 }

@@ -22,6 +22,26 @@ export interface Roles {
   receiver: string;
 }
 
+export type EscrowRole = keyof Roles;
+
+/** Filtros opcionales de `get-escrows-by-role` y `get-escrows-by-signer` (Swagger de la API). */
+export interface EscrowListQuery {
+  status?: string;
+  type?: "single-release" | "multi-release";
+  engagementId?: string;
+  title?: string;
+  isActive?: boolean;
+  validateOnChain?: boolean;
+  startDate?: string;
+  endDate?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  orderBy?: "createdAt" | "updatedAt" | "amount";
+  orderDirection?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+}
+
 export interface MilestoneInput {
   description: string;
 }

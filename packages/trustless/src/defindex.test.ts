@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { accruedYield, expectedPayout, TW_VAULT_TESTNET } from "./defindex";
+import {
+  accruedYield,
+  expectedPayout,
+  TW_DEPLOYER_TESTNET,
+  TW_ESCROW_WASM_TESTNET,
+  TW_FEE_ADDRESS_TESTNET,
+  TW_VAULT_TESTNET,
+} from "./defindex";
+import { isContractAddress } from "./fianza";
+
+describe("constantes de TW en testnet", () => {
+  it("tienen el formato que toca (un error al copiarlas rompería la verificación sin avisar)", () => {
+    expect(isContractAddress(TW_VAULT_TESTNET)).toBe(true);
+    expect(isContractAddress(TW_DEPLOYER_TESTNET)).toBe(true);
+    expect(TW_FEE_ADDRESS_TESTNET).toMatch(/^G[A-Z2-7]{55}$/);
+    expect(TW_ESCROW_WASM_TESTNET).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
 
 describe("rendimiento en el vault", () => {
   it("rendimiento = valor en el vault − lo fondeado, nunca negativo", () => {

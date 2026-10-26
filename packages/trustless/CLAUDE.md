@@ -7,6 +7,8 @@
 - Cada escritura devuelve `{ unsignedTransaction }`: una transacción cuya **cuenta origen es el firmante del rol**. La firma esa cuenta y se envía con `POST /helper/send-transaction { signedXdr }`, que **no patrocina**: la comisión la paga la cuenta origen.
 - **Una passkey (C-address) no puede ser firmante en la API** (400 `invalid version byte`, issue #61), aunque sí puede tener roles: solo firma *auth entries*, no el sobre. Las acciones que firma una passkey (`fund_escrow`, `approve_milestone`, `release_funds`, `dispute_escrow`) se construyen contra el contrato y van, patrocinadas, por el Relayer de `packages/wallet` (`externalEscrows` y `trustless.feeAddress`, #66).
 - Lecturas con arrays: `?contractIds[]=C…` / `?addresses[]=C…`, también con un solo valor.
+- Listas: `getEscrowsByRole(rol, dirección, filtros?)` (las fianzas de un casero son las de `approver`; las de un inquilino, las de `receiver`) y `getEscrowsBySigner`. Por defecto piden `type=single-release` y `validateOnChain=true`.
+- **La base de datos de TW solo se entera de lo que se envía con su `sendTransaction`.** Lo que va por nuestra RPC o por el Relayer hay que avisarlo con `indexTransaction(txHash)` (`PUT /indexer/update-from-txhash`). Si no, sus lecturas se quedan con el estado anterior (#97).
 - Errores (NestJS `{ statusCode, message }`) → `TrustlessApiError`.
 - Importes en **decimales** (`100.5`): convierte siempre con `units.ts` desde la unidad mínima (7 decimales). Nunca hagas cuentas con `number`.
 - Activo: USDC de **Blend** en testnet (emisor `GATALTGT…5V56`). Necesitan trustline quien fondea, el receptor y `platformAddress` (**aunque `platformFee = 0`**: comprobado).
@@ -18,14 +20,19 @@
 - `signer` del deploy: por defecto la tesorería (cuenta G de la plataforma), porque las partes pueden ser passkeys.
 
 ## Rendimiento y comisiones (src/defindex.ts)
-- Vault por defecto de TW (testnet) `CCG3G4YU…S7ZJ`; wasm del escrow `828ae584…4b95`; comisión de TW a `GBPUACN7…AMUB`.
+- Vault por defecto de TW (testnet) `CCG3G4YU…S7ZJ`; wasm del escrow `828ae584…4b95`; comisión de TW a `GBPUACN7…AMUB`; deployer `CBTENJ2A…GEJI` (`TW_DEPLOYER_TESTNET`).
+- **Antes de firmar en el servidor el XDR de un despliegue, compruébalo.** En los despliegues reales, la transacción tiene:
+  - la cuenta origen = `signer`;
+  - una sola operación `invokeHostFunction` → `TW_DEPLOYER_TESTNET.tw_new_single_release_escrow`;
+  - una sola entrada de auth, de la cuenta origen, con esa misma llamada como raíz y sin subinvocaciones;
+  - una comisión de unos 170 000 stroops.
 - La comisión de TW (0,3 %) y `platformFee` se cobran sobre **todo lo retirado**, capital incluido: el inquilino solo recupera el 100 % si el rendimiento supera ese 0,3 %. `platformFee = 0` de momento.
 - El saldo crece en cada ledger; justo después de fondear puede quedar 1 stroop por debajo del importe. No compares `balance == amount`.
 
-## Huecos frente al plan B (no los tapes aquí)
+## Límites del plan A (no los tapes aquí)
+Solo existe el plan A. El plan B está descartado: ver `docs/DECISIONS.md`.
 - Las acciones de una passkey no pueden ir por la API de TW: hay que construirlas contra el contrato (#61, #66).
-- Sin stop bond ni perito pagado por el bond.
-- Sin timeout del casero ni de revisión: el inquilino no puede reclamar solo.
+- No hay depósito por parar, ni perito, ni plazos: si el casero no responde, el inquilino no puede reclamar solo.
 - Roles fijados al desplegar: el escrow se despliega cuando el inquilino acepta la invitación (hace falta su dirección).
 - **El reparto por jurisdicción solo se aplica en el camino de disputa.** En el camino normal (el casero aprueba y el inquilino libera), `release-funds` paga capital **y rendimiento** al inquilino. Eso contradice la decisión para Portugal (rendimiento al casero y 20 % para la plataforma) y la API de TW no permite evitarlo. **Decisión de equipo pendiente**, junto con la comisión del 0,3 % de TW sobre el capital.
 - **La plataforma no ingresa nada en el plan A.** Con `platformFee = 0` (la de TW se cobra sobre el capital) solo puede cobrar en `withdraw-remaining-funds` vía `platformFeeBps`, y eso solo ocurre tras una disputa. **Decisión de producto pendiente:** qué porcentaje y si compensa cobrar sobre el capital en `platformFee`.

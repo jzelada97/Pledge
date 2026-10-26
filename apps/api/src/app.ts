@@ -6,6 +6,8 @@ import { apiKeyAuth } from "./auth";
 import { createChain, TtlCache, type Chain } from "./chain";
 import { relayPolicy, type ApiConfig, type ApiKey } from "./config";
 import { rateLimits } from "./limits";
+import { createTwClient } from "./plan-a/client";
+import { planARoutes } from "./plan-a/routes";
 import { notFound, Problem, problemResponse, serviceDisabled, validationError } from "./problem";
 import { fianzasRoutes } from "./routes/fianzas";
 import { stellarRoutes } from "./routes/stellar";
@@ -14,6 +16,7 @@ import { twRoutes } from "./routes/tw";
 export interface AppDeps {
   chain?: Chain; // para tests
   now?: () => number;
+  twFetch?: typeof fetch; // para tests: la API de Trustless Work simulada
 }
 
 type Env = { Variables: { traceId: string; apiKey: ApiKey | null } };
@@ -51,14 +54,20 @@ export function createApp(cfg: ApiConfig, deps: AppDeps = {}) {
     c.json({
       ok: true,
       network: cfg.deployments.network,
+      backend: cfg.backend,
       factory: cfg.deployments.factory,
+      trustless: cfg.trustless !== null,
       relayer: cfg.relayer !== null,
       ramp: cfg.ramp?.enabled ?? false,
       updatedAt: cfg.deployments.updatedAt,
     }),
   );
 
-  app.route("/", stellarRoutes(cfg, chain, cache));
+  const tw = cfg.backend === "trustless" && cfg.trustless ? createTwClient(cfg.trustless, deps.twFetch) : null;
+  app.route("/", stellarRoutes(cfg, chain, cache, tw));
+  // Plan A (TW) por defecto; el plan B (factory propia) queda detrás, en reserva, y sigue sirviendo
+  // lo que el plan A no cubre (estrategias, precio por share). Hono atiende la primera ruta que encaja.
+  if (cfg.backend === "trustless") app.route("/", planARoutes(cfg, tw, chain, cache, deps.now));
   app.route("/", fianzasRoutes(cfg, chain, cache));
   app.route("/", twRoutes(cfg, chain, cache));
 
