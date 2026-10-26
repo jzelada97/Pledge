@@ -29,6 +29,13 @@ class FixedWindow {
     private readonly windowMs: number,
   ) {}
 
+  /** ¿Queda cupo? No consume: sirve para rechazar pronto sin gastar nada. */
+  check(key: string, now: number): boolean {
+    const cur = this.hits.get(key);
+    return !cur || now - cur.start >= this.windowMs || cur.count < this.limit;
+  }
+
+  /** Consume una unidad del cupo (si queda). */
   allow(key: string, now: number): boolean {
     const cur = this.hits.get(key);
     if (!cur || now - cur.start >= this.windowMs) {
@@ -79,13 +86,22 @@ export function createRelayHandler(cfg: RelayHandlerConfig): (req: Request) => P
       if (text === null) return fail("PAYLOAD_TOO_LARGE", 413);
       const body = decodeSubmission(parseSubmission(text));
 
-      // Los cupos por credencial van antes de consultar la red (wasm, registro, simulación): una
-      // credencial sin cupo no gasta RPC.
+      // Los cupos por credencial se comprueban antes de consultar la red (wasm, registro, simulación):
+      // una credencial sin cupo no gasta RPC. Pero solo se CONSUMEN tras validar: la credencial sale del
+      // cuerpo sin verificar, y si contara antes, cualquiera podría agotar el cupo de un casero mandando
+      // peticiones con firmas falsas (que la simulación rechaza).
+      const isCreate = body.fn === "create_fianza";
       for (const key of body.rateKeys) {
-        if (!perCredential.allow(key, t)) return fail("RATE_LIMITED", 429);
-        if (body.fn === "create_fianza" && !createsPerCredential.allow(key, t)) return fail("RATE_LIMITED", 429);
+        if (!perCredential.check(key, t) || (isCreate && !createsPerCredential.check(key, t))) {
+          return fail("RATE_LIMITED", 429);
+        }
       }
       await validateSubmission(body, policy, chain);
+      for (const key of body.rateKeys) {
+        if (!perCredential.allow(key, t) || (isCreate && !createsPerCredential.allow(key, t))) {
+          return fail("RATE_LIMITED", 429);
+        }
+      }
 
       let res: Response;
       try {

@@ -220,6 +220,21 @@ describe("createRelayHandler", () => {
     expect([res.status, await codeOf(res)]).toEqual([429, "RATE_LIMITED"]);
   });
 
+  it("las peticiones rechazadas no gastan el cupo de la credencial que dicen traer", async () => {
+    const h = handler();
+    const landlord = randomContract();
+    wasm.set(landlord, ACCOUNT_WASM);
+    const args = invoke(factory, "create_fianza", [new Address(landlord).toScVal()]);
+    const body = payload(hostFn(args), [entry(landlord, call(args))]);
+    // Un tercero conoce la dirección del casero pero no tiene su passkey: la simulación rechaza sus firmas.
+    sim = { ok: false, minResourceFee: 0n };
+    for (let i = 0; i < 5; i++) expect((await h(request(body, { "x-real-ip": "6.6.6.6" }))).status).toBe(400);
+    // El casero, con la firma buena, sigue teniendo su cupo entero.
+    sim = { ok: true, minResourceFee: 1000n };
+    for (let i = 0; i < 5; i++) expect((await h(request(body))).status).toBe(200);
+    expect((await h(request(body))).status).toBe(429);
+  });
+
   it("patrocina escrows de TW por su wasm, solo con sus funciones de usuario", async () => {
     const TW_WASM = "33".repeat(32);
     const twEscrow = randomContract();
