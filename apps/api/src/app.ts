@@ -67,7 +67,7 @@ export function createApp(cfg: ApiConfig, deps: AppDeps = {}) {
   app.route("/", stellarRoutes(cfg, chain, cache, tw));
   // Plan A (TW) por defecto; el plan B (factory propia) queda detrás, en reserva, y sigue sirviendo
   // lo que el plan A no cubre (estrategias, precio por share). Hono atiende la primera ruta que encaja.
-  if (cfg.backend === "trustless") app.route("/", planARoutes(cfg, tw, chain, cache));
+  if (cfg.backend === "trustless") app.route("/", planARoutes(cfg, tw, chain, cache, deps.now));
   app.route("/", fianzasRoutes(cfg, chain, cache));
   app.route("/", twRoutes(cfg, chain, cache));
 
