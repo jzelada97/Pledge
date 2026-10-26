@@ -1,8 +1,8 @@
-// Una fianza como escrow single-release con rendimiento de Trustless Work (API v1 + vault). Este
-// módulo traduce nuestro dominio (casero, inquilino, staff, aprobar devolución, parar, resolver) a los
-// cuerpos de su API.
+// Una fianza como escrow single-release con rendimiento de Trustless Work (TW v2, TrustYield, con
+// vault). Este módulo traduce nuestro dominio (casero, inquilino, staff, aprobar devolución, parar,
+// resolver) a los cuerpos de su API.
 //
-// Roles v1 (una dirección por rol, sin quórum): el casero es `approver` y `serviceProvider`; el
+// Roles con una dirección cada uno (sin quórum): el casero es `approver` y `serviceProvider`; el
 // inquilino, `releaseSigner` y `receiver`. "Aprobar la devolución" son dos pasos: el casero aprueba el
 // hito y el inquilino libera. La API no admite una C-address (passkey) como firmante (issue #61): esas
 // acciones se construyen contra el contrato y van por el Relayer (packages/wallet, plan A).
@@ -49,7 +49,7 @@ export interface FianzaParties {
   tenant: string;
   /** Recibe la comisión de la plataforma y es quien puede actualizar el escrow: cuenta de la plataforma. */
   treasury: string;
-  /** Resolver de disputas (v1: una sola cuenta). */
+  /** Resolver de disputas (una sola cuenta). */
   staff: string;
 }
 
@@ -155,7 +155,7 @@ export function planApproveRelease(escrow: Escrow, who: string): ApproveAction {
 }
 
 /**
- * "Parar": el casero abre la disputa (v1 no guarda motivo on-chain). Si ya aprobó la devolución no
+ * "Parar": el casero abre la disputa (el escrow de TW no guarda motivo on-chain). Si ya aprobó la devolución no
  * puede echarse atrás: solo falta que el inquilino libere.
  */
 export function buildStopBody(escrow: Escrow, landlord: string): DisputeBody {

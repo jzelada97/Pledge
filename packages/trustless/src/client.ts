@@ -1,4 +1,4 @@
-// Cliente de la API con rendimiento de Trustless Work (single-release v1 + vault de DeFindex).
+// Cliente de la API con rendimiento de Trustless Work (TW v2, TrustYield: single-release con vault de DeFindex).
 // Solo servidor: lleva la API key. Cada escritura devuelve `{ unsignedTransaction }` para firmar en el
 // cliente y enviarlo con `sendTransaction`.
 import type {
