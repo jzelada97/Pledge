@@ -65,6 +65,49 @@ describe("createTrustlessClient", () => {
     expect(firstCall(fetch).url).toBe(`${TW_YIELD_URL}/escrow/single-release/vault-position?contractId=${ESCROW_ID}`);
   });
 
+  it("lista fianzas por rol y por firmante: por defecto single-release y validadas en cadena", async () => {
+    const escrow = escrowFixture();
+    let fetch = mockFetch(200, [escrow]);
+    let tw = createTrustlessClient({ apiKey: "k", fetch });
+    expect(await tw.getEscrowsByRole("approver", LANDLORD)).toEqual([escrow]);
+    expect(firstCall(fetch).url).toBe(
+      `${TW_YIELD_URL}/helper/get-escrows-by-role?role=approver&roleAddress=${LANDLORD}&type=single-release&validateOnChain=true`,
+    );
+    expect(firstCall(fetch).init.headers).toMatchObject({ "x-api-key": "k" });
+
+    // Los filtros sustituyen a los de por defecto y se añaden los que falten.
+    fetch = mockFetch(200, []);
+    tw = createTrustlessClient({ apiKey: "k", fetch });
+    await tw.getEscrowsBySigner(LANDLORD, { validateOnChain: false, orderBy: "createdAt", orderDirection: "desc", page: 2, pageSize: 20 });
+    expect(firstCall(fetch).url).toBe(
+      `${TW_YIELD_URL}/helper/get-escrows-by-signer?signer=${LANDLORD}&type=single-release&validateOnChain=false` +
+        "&orderBy=createdAt&orderDirection=desc&page=2&pageSize=20",
+    );
+  });
+
+  it("las listas sin resultados (cuerpo vacío) dan [] y los errores, TrustlessApiError", async () => {
+    expect(await createTrustlessClient({ apiKey: "k", fetch: mockFetch(200, undefined) }).getEscrowsByRole("receiver", LANDLORD)).toEqual([]);
+    const err = await createTrustlessClient({ apiKey: "k", fetch: mockFetch(400, { statusCode: 400, message: "role inválido" }) })
+      .getEscrowsByRole("receiver", LANDLORD)
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(TrustlessApiError);
+    expect(err).toMatchObject({ status: 400, message: "role inválido" });
+  });
+
+  it("avisa al indexador de TW de una transacción enviada por otra vía", async () => {
+    const hash = "ab".repeat(32);
+    const fetch = mockFetch(200, { ok: true });
+    const tw = createTrustlessClient({ apiKey: "k", fetch });
+    await tw.indexTransaction(hash);
+    const { url, init } = firstCall(fetch);
+    expect(url).toBe(`${TW_YIELD_URL}/indexer/update-from-txhash`);
+    expect(init.method).toBe("PUT");
+    expect(JSON.parse(String(init.body))).toEqual({ txHash: hash });
+    // Un hash mal formado no llega a la API.
+    await expect(tw.indexTransaction("no-es-un-hash")).rejects.toThrow(RangeError);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("con listas vacías no llama a la API", async () => {
     const fetch = mockFetch(200, []);
     const tw = createTrustlessClient({ apiKey: "k", fetch });

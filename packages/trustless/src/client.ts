@@ -9,6 +9,8 @@ import type {
   DistributionsBody,
   Escrow,
   EscrowBalance,
+  EscrowListQuery,
+  EscrowRole,
   FundBody,
   ReleaseFundsBody,
   SendTransactionResponse,
@@ -46,12 +48,29 @@ function arrayQuery(key: string, values: string[]): string {
   return values.map((v) => `${key}[]=${encodeURIComponent(v)}`).join("&");
 }
 
+// Las listas, por defecto, solo con nuestras fianzas (single-release) y validadas contra la cadena,
+// como `getEscrows`. Los filtros que se pasen las sustituyen.
+const LIST_DEFAULTS: EscrowListQuery = { type: "single-release", validateOnChain: true };
+
+function listQuery(required: Record<string, string>, opts: EscrowListQuery = {}): string {
+  const q = new URLSearchParams(required);
+  for (const [key, value] of Object.entries({ ...LIST_DEFAULTS, ...opts })) {
+    if (value !== undefined) q.set(key, String(value));
+  }
+  return q.toString();
+}
+
+// Sin resultados la API puede responder con el cuerpo vacío.
+const asList = (data: unknown): Escrow[] => (Array.isArray(data) ? (data as Escrow[]) : []);
+
+const TX_HASH_RE = /^[0-9a-f]{64}$/i;
+
 export function createTrustlessClient(config: TrustlessClientConfig) {
   if (!config.apiKey) throw new Error("Falta la API key de Trustless Work");
   const base = (config.baseUrl ?? TW_YIELD_URL).replace(/\/+$/, "");
   const doFetch = config.fetch ?? fetch;
 
-  async function call<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  async function call<T>(method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<T> {
     const res = await doFetch(`${base}${path}`, {
       method,
       headers: { "Content-Type": "application/json", "x-api-key": config.apiKey },
@@ -87,8 +106,23 @@ export function createTrustlessClient(config: TrustlessClientConfig) {
       addresses.length === 0
         ? []
         : call<EscrowBalance[]>("GET", `/helper/get-multiple-escrow-balance?${arrayQuery("addresses", addresses)}`),
+    /** Escrows en los que `roleAddress` tiene el rol: las fianzas de un casero (`approver`) o de un inquilino (`receiver`). */
+    getEscrowsByRole: async (role: EscrowRole, roleAddress: string, opts?: EscrowListQuery): Promise<Escrow[]> =>
+      asList(await call<unknown>("GET", `/helper/get-escrows-by-role?${listQuery({ role, roleAddress }, opts)}`)),
+    /** Escrows que desplegó `signer` (la cuenta G que firmó el deploy). */
+    getEscrowsBySigner: async (signer: string, opts?: EscrowListQuery): Promise<Escrow[]> =>
+      asList(await call<unknown>("GET", `/helper/get-escrows-by-signer?${listQuery({ signer }, opts)}`)),
     vaultPosition: (contractId: string) =>
       call<VaultPosition>("GET", `${SINGLE_RELEASE}/vault-position?contractId=${encodeURIComponent(contractId)}`),
     sendTransaction: (signedXdr: string) => call<SendTransactionResponse>("POST", "/helper/send-transaction", { signedXdr }),
+    /**
+     * Avisa al indexador de TW de una transacción enviada por otra vía (nuestra RPC o el Relayer). Su
+     * base de datos solo se actualiza sola con su propio `sendTransaction`; sin el aviso, las lecturas
+     * de la API se quedan con el estado anterior.
+     */
+    indexTransaction: async (txHash: string): Promise<void> => {
+      if (!TX_HASH_RE.test(txHash)) throw new RangeError(`Hash de transacción no válido: ${txHash}`);
+      await call<unknown>("PUT", "/indexer/update-from-txhash", { txHash });
+    },
   };
 }

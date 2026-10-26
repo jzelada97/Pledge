@@ -7,6 +7,8 @@
 - Cada escritura devuelve `{ unsignedTransaction }`: una transacción cuya **cuenta origen es el firmante del rol**. La firma esa cuenta y se envía con `POST /helper/send-transaction { signedXdr }`, que **no patrocina**: la comisión la paga la cuenta origen.
 - **Una passkey (C-address) no puede ser firmante en la API** (400 `invalid version byte`, issue #61), aunque sí puede tener roles: solo firma *auth entries*, no el sobre. Las acciones que firma una passkey (`fund_escrow`, `approve_milestone`, `release_funds`, `dispute_escrow`) se construyen contra el contrato y van, patrocinadas, por el Relayer de `packages/wallet` (`externalEscrows` y `trustless.feeAddress`, #66).
 - Lecturas con arrays: `?contractIds[]=C…` / `?addresses[]=C…`, también con un solo valor.
+- Listas: `getEscrowsByRole(rol, dirección, filtros?)` (las fianzas de un casero son las de `approver`; las de un inquilino, las de `receiver`) y `getEscrowsBySigner`. Por defecto piden `type=single-release` y `validateOnChain=true`.
+- **La base de datos de TW solo se entera de lo que se envía con su `sendTransaction`.** Lo que va por nuestra RPC o por el Relayer hay que avisarlo con `indexTransaction(txHash)` (`PUT /indexer/update-from-txhash`). Si no, sus lecturas se quedan con el estado anterior (#97).
 - Errores (NestJS `{ statusCode, message }`) → `TrustlessApiError`.
 - Importes en **decimales** (`100.5`): convierte siempre con `units.ts` desde la unidad mínima (7 decimales). Nunca hagas cuentas con `number`.
 - Activo: USDC de **Blend** en testnet (emisor `GATALTGT…5V56`). Necesitan trustline quien fondea, el receptor y `platformAddress` (**aunque `platformFee = 0`**: comprobado).
