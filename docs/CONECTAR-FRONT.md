@@ -24,3 +24,4 @@ Rama: `p4/textos-plan-a` (PR #113), al día con `main`. Modo MVP (`docs/DECISION
 
 ## Estado
 - Pasos 1–5 hechos en código (typecheck en verde): `lib/pledge.ts`, invitación conectada (`/i/1?l=<casero>&a=<importe>`) y página `/demo` (cuenta, link del casero, fianzas reales, aprobar y recuperar). Paso 6 en curso: `apps/web/.env.local` creado (no se sube) y la API responde con `backend: trustless`, `relayer: true` y `ramp: true`. Falta el recorrido en Chrome con dos cuentas (casero e inquilino, dos perfiles de Chrome): `/demo` → link → `/i/1?l=…&a=10` → `/demo` aprobar → `/demo` recuperar.
+- **RAMP_DOWN = la cuenta del ramp (faucet `GDHIKULV…YDC3`) sin USDC.** Recargarla cambiando XLM por USDC en Soroswap (router `CCJUD55A…7BRD`, ruta XLM → USDC); el 26-oct se recargó con 1000 XLM → 155 USDC.
