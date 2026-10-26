@@ -15,12 +15,12 @@ Rama: `p4/textos-plan-a` (PR #113), al día con `main`. Modo MVP (`docs/DECISION
 - **Anchor** (`@fianzas/anchor`): `createSimulatedAnchor({rampPath})` → `startDeposit(address, "USDC", amount)`.
 
 ## Plan (camino feliz)
-1. [ ] `apps/web/package.json`: añadir `@fianzas/wallet` y `@fianzas/anchor` (lock `deps`).
-2. [ ] `lib/wallet-client.ts`: `createWallet` con `deployments/testnet.json` (`rpId = location.hostname`, `relayPath = /api/fianzas/v1/relay`, `trustless.isEscrow` = wasm de TW).
-3. [ ] `lib/use-sign.ts`: aceptar `action: () => Promise<void>` real en vez de los tiempos falsos.
-4. [ ] Invitación (`components/invitation-flow.tsx`): paso 1 `connect()` o `createAccount()`; paso 2 ramp; paso 3 crear el escrow (POST fianzas) + `fund` + `signAndSendBuilt` + indexer.
+1. [x] `apps/web/package.json`: añadir `@fianzas/wallet` y `@fianzas/anchor` (lock `deps`).
+2. [x] `lib/wallet-client.ts`: `createWallet` con `deployments/testnet.json` (`rpId = location.hostname`, `relayPath = /api/fianzas/v1/relay`, `trustless.isEscrow` = wasm de TW).
+3. [x] `lib/use-sign.ts`: aceptar `action: () => Promise<void>` real en vez de los tiempos falsos.
+4. [x] Invitación (`components/invitation-flow.tsx`): paso 1 `connect()` o `createAccount()`; paso 2 ramp; paso 3 crear el escrow (POST fianzas) + `fund` + `signAndSendBuilt` + indexer.
 5. [ ] Casero: aprobar (`approve-milestones`). Inquilino: recuperar (`approve-and-release-milestones`).
 6. [ ] Probar en local con `.env.local` en la raíz: `TW_API_KEY`, `TREASURY_SECRET`, `RELAYER_API_KEY`, `RAMP_ENABLED=1`, `RAMP_FAUCET_SECRET` (pedir a Jose).
 
 ## Estado
-- (se actualiza en cada paso)
+- Pasos 1–4 hechos (`lib/pledge.ts`, `use-sign` con `action`, invitación conectada). Sin probar aún con `.env.local`. El link de invitación acepta `?l=<cuenta del casero>&a=<importe>`. Siguiente: página `/f/[contractId]` con aprobar (casero) y recuperar (inquilino), y una página `/demo` para que el casero cree su cuenta y su link.

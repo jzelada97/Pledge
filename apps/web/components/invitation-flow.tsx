@@ -11,15 +11,17 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n/client";
+import { addTestMoney, createFianza, ensureAccount, fundFianza } from "@/lib/pledge";
 
 type Step = "review" | 0 | 1 | 2 | "paid";
 
 // iOS onboarding style: first the terms (server-rendered, passed as `review`), then one full screen per step
 // (sign in or create account → add money from the bank → accept and pay), each with its action at the bottom.
-export function InvitationFlow(props: { amount: string; termsMatch: boolean; simulatedRamp: boolean; review: ReactNode }) {
+export function InvitationFlow(props: { amount: string; amountDec: string; landlord: string; termsMatch: boolean; simulatedRamp: boolean; review: ReactNode }) {
   const { t } = useI18n();
   const x = t.invitation;
   const [step, setStep] = useState<Step>("review");
+  const [tenant, setTenant] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (step !== "review") heading.current?.focus(); // a new screen: move focus to its title
@@ -65,7 +67,7 @@ export function InvitationFlow(props: { amount: string; termsMatch: boolean; sim
           <p className="text-center text-sm text-muted-foreground">{x.signIn.note}</p>
           <DevNote>wallet.connect() first (silent reconnect); if it returns null, wallet.createAccount().</DevNote>
           <BottomBar>
-            <SignButton size="lg" label={x.signIn.button} success={x.signIn.success} onDone={() => setStep(1)} />
+            <SignButton size="lg" label={x.signIn.button} success={x.signIn.success} onDone={() => setStep(1)} action={async () => setTenant(await ensureAccount())} />
           </BottomBar>
         </Screen>
       )}
@@ -74,7 +76,7 @@ export function InvitationFlow(props: { amount: string; termsMatch: boolean; sim
         <Screen ref={heading} n={2} stepLabel={x.stepOf(2)} icon={LandmarkIcon} title={x.addMoney.title} description={x.addMoney.body(props.amount)}>
           {props.simulatedRamp && <Badge className="mx-auto bg-warning/10 text-warning">{t.common.simulatedBank}</Badge>}
           <BottomBar>
-            <SignButton size="lg" label={x.addMoney.button(props.amount)} success={x.addMoney.success} onDone={() => setStep(2)} />
+            <SignButton size="lg" label={x.addMoney.button(props.amount)} success={x.addMoney.success} onDone={() => setStep(2)} action={() => addTestMoney(tenant!, props.amountDec)} />
           </BottomBar>
         </Screen>
       )}
@@ -91,7 +93,14 @@ export function InvitationFlow(props: { amount: string; termsMatch: boolean; sim
           <DevNote>Before asking for Face ID, the terms are checked against deployments/testnet.json (WEB-14).</DevNote>
           {props.termsMatch && (
             <BottomBar>
-              <SignButton size="lg" label={x.pay.button} success={x.pay.success} onDone={() => setStep("paid")} />
+              <SignButton size="lg" label={x.pay.button} success={x.pay.success}
+                onDone={() => setStep("paid")}
+                action={async () => {
+                  // Plan A: el escrow de TW se crea ahora que se conoce la cuenta del inquilino, y después se deposita.
+                  const contractId = await createFianza(props.landlord, tenant!, props.amountDec);
+                  await fundFianza(contractId, tenant!, props.amountDec);
+                }}
+              />
             </BottomBar>
           )}
         </Screen>
