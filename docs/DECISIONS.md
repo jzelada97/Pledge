@@ -18,7 +18,7 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - **Decisión:**
   - La fecha de fin del alquiler (`endTs`) va en el engagementId del escrow (`fianza-<id>-end<endTs>`), que es inmutable y público. `claimableAt = endTs + TW_CLAIM_TIMEOUT_SECS` (30 días en producción; 120 s en la demo).
   - Pasado `claimableAt` sin aprobación del casero, `POST /fianzas/v1/fianzas/{id}/claim-timeout` guía tres pasos: el inquilino abre la disputa (`dispute_escrow`, que TW le permite), el staff la resuelve con deducción 0 y reparte el sobrante. Con `STAFF_SECRET` en el servidor los pasos 2 y 3 son automáticos; sin ella el staff firma a mano.
-  - El servidor solo resuelve si la disputa es la del inquilino y posterior al plazo (se verifica en la cadena). Una parada del casero anterior al plazo sigue yendo al perito.
+  - El servidor solo resuelve si la disputa es la del inquilino y posterior al plazo (se verifica en la cadena). Una parada del casero anterior al plazo la resuelve el staff como cualquier disputa (en el plan A no hay perito).
   - Textos del front (P3): «Si a los 30 días del fin del contrato el casero no ha aprobado ni abierto una disputa, puedes reclamar la fianza y te la devolvemos íntegra».
 - **Descartado para la demo:** fork del contrato de TW con `claim_after_timeout` on-chain (queda como roadmap: es lo único que da la garantía sin confiar en la plataforma) y volver al plan B.
 - Decide: P2 con P1 · Implementa: P2 (API) · Probado en testnet: `CA5U6SNN…JERA`, disputa `b9a32710…`, resolve `99db6986…`.

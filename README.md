@@ -24,6 +24,7 @@ Every deposit gets **its own escrow contract** ([Trustless Work](https://www.tru
 - **It earns yield.** The escrow deposits the funds into a DeFindex vault on Blend (USDC). The yield is **variable and never risk-free**.
 - **It comes back when the landlord approves.** The landlord approves the refund, and the tenant releases the deposit plus its yield, minus fees, to their own account.
 - **Disputes have a clear path.** Only the landlord can stop the refund, for free and before approving it. Pledge staff then decide the split: any deduction goes to the landlord and the rest goes back to the tenant. Leftover yield is shared according to the jurisdiction's rule (MVP: Portugal).
+- **The tenant is never stuck.** If the landlord neither approves nor stops the refund within 30 days of the lease end, the tenant can claim it and gets the whole deposit back. Pledge guarantees this, not the contract.
 - **No crypto UX for the tenant.** Passkey account (Face ID or fingerprint, no seed phrase), sponsored fees and a bank on-ramp through an anchor.
 
 ## 3. How it works
@@ -67,6 +68,7 @@ flowchart LR
 | **Stop** *(dispute)* | Landlord | `dispute_escrow`, only before approving. |
 | **Resolve** | Staff | `resolve-dispute`: the funded amount is split (deduction to the landlord, the rest to the tenant). If the vault lost value, the remaining balance is split. |
 | **Share leftover yield** | Staff | `withdraw-remaining-funds`: optional platform fee first, then the jurisdiction's tenant/landlord share. |
+| **Claim** *(no answer 30 days after the lease ends)* | Tenant, then staff | The tenant opens a dispute (`dispute_escrow`) and the staff resolve it with no deduction. The server checks the deadline on-chain first. Guaranteed by Pledge, not by the contract. |
 
 ### What's live, simulated and planned
 
@@ -77,8 +79,9 @@ flowchart LR
 | Passkey signing, with a check of what the user signs | ✅ **Live** | [#66](../../pull/66), [#79](../../pull/79) |
 | Sponsored fees through the Relayer, with a strict policy | ✅ **Live** | [#81](../../pull/81) |
 | API protections: rate limits, API keys, platform-only transactions | ✅ **Live** | [#85](../../pull/85), [#90](../../pull/90), [#109](../../pull/109) |
-| Landlord and tenant screens (Pledge) | 🟡 **Being connected to the API** (sample data until then) | [#100](../../pull/100), [#113](../../pull/113), [#84](../../issues/84) |
-| Passkey deposit and release in the browser, end to end | 🟡 **In testing** | [#82](../../issues/82) |
+| Landlord and tenant screens (Pledge), connected to the API | ✅ **Live** | [#100](../../pull/100), [#113](../../pull/113), [#126](../../pull/126) |
+| Passkey deposit and release in the browser, end to end | 🟡 **Being fixed** (the passkey deposit fails in the Relayer simulation) | [#82](../../issues/82), [#128](../../pull/128) |
+| Tenant claim 30 days after the lease ends (guaranteed by Pledge) | 🟡 **Live in the API**, not yet in the web app | [#115](../../issues/115), [#122](../../pull/122) |
 | Bank on-ramp | 🟣 **Simulated** on testnet (capped faucet ramp) | [#74](../../issues/74) |
 | Security headers (CSP) | ⏳ **Planned** | [#96](../../pull/96) |
 | Fees charged on the yield only, so the deposit always comes back in full | ⏳ **Planned** | [`DECISIONS.md`](docs/DECISIONS.md) |
@@ -195,7 +198,7 @@ This is a hackathon MVP focused on the happy path, on **testnet only**.
 
 - **Trustless Work charges 0.3% on everything withdrawn, deposit included.** The tenant only gets 100% back once the yield exceeds that fee (about three weeks at a 6% yearly rate).
 - **On a normal refund, all the yield goes to the tenant.** Trustless Work's `release_funds` pays everything to the receiver, so the jurisdiction's yield rule (Portugal: yield to the landlord) only applies on the dispute path. The platform also only earns a fee there.
-- **No automatic claim.** If the landlord never approves or stops the refund, the tenant can't recover the deposit alone.
+- **The 30-day claim relies on Pledge, not on the contract.** The Trustless Work escrow has no deadlines, so our server and staff carry it out. It is ready in the API but not yet in the web app.
 - **The bank on-ramp is simulated on testnet.**
 - **A passkey lives in the browser or password manager where it was created,** so demo accounts must be created on the final domain and device.
 - **The yield is variable and never guaranteed.** It depends on the Blend pool.
@@ -204,7 +207,7 @@ This is a hackathon MVP focused on the happy path, on **testnet only**.
 
 - Mainnet launch with a real SEP-24 anchor in Portugal and Spain.
 - Charge platform and Trustless Work fees on the yield only, so the deposit always comes back in full.
-- Jurisdiction-aware refunds on the normal path, and a time limit after which the tenant can claim the deposit.
+- Jurisdiction-aware refunds on the normal path, the claim button in the web app, and an on-chain claim deadline in the escrow so the guarantee no longer depends on Pledge.
 - Portfolio dashboard and bulk operations for large landlords.
 - External security audit.
 
