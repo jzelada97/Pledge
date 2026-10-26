@@ -18,7 +18,12 @@
 - `signer` del deploy: por defecto la tesorería (cuenta G de la plataforma), porque las partes pueden ser passkeys.
 
 ## Rendimiento y comisiones (src/defindex.ts)
-- Vault por defecto de TW (testnet) `CCG3G4YU…S7ZJ`; wasm del escrow `828ae584…4b95`; comisión de TW a `GBPUACN7…AMUB`.
+- Vault por defecto de TW (testnet) `CCG3G4YU…S7ZJ`; wasm del escrow `828ae584…4b95`; comisión de TW a `GBPUACN7…AMUB`; deployer `CBTENJ2A…GEJI` (`TW_DEPLOYER_TESTNET`).
+- **Antes de firmar en el servidor el XDR de un despliegue, compruébalo.** En los despliegues reales, la transacción tiene:
+  - la cuenta origen = `signer`;
+  - una sola operación `invokeHostFunction` → `TW_DEPLOYER_TESTNET.tw_new_single_release_escrow`;
+  - una sola entrada de auth, de la cuenta origen, con esa misma llamada como raíz y sin subinvocaciones;
+  - una comisión de unos 170 000 stroops.
 - La comisión de TW (0,3 %) y `platformFee` se cobran sobre **todo lo retirado**, capital incluido: el inquilino solo recupera el 100 % si el rendimiento supera ese 0,3 %. `platformFee = 0` de momento.
 - El saldo crece en cada ledger; justo después de fondear puede quedar 1 stroop por debajo del importe. No compares `balance == amount`.
 
