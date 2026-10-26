@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
@@ -11,7 +12,8 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  await connection(); // render per request: the CSP nonce from proxy.ts only reaches dynamic pages
   return (
     <html lang="en">
       <body className="min-h-dvh bg-white text-neutral-900 antialiased">{children}</body>

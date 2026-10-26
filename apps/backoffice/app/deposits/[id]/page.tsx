@@ -98,7 +98,7 @@ function ResolveDeposit({ d }: { d: StoppedRow }) {
             disabled={justified !== true}
             className="rounded border border-neutral-400 p-2 disabled:opacity-40"
             value={justified === true ? deductionUsd : 0}
-            onChange={(e) => setDeductionUsd(Number(e.target.value) || 0)}
+            onChange={(e) => setDeductionUsd(Math.max(0, Number(e.target.value) || 0))} // min={0} alone doesn't stop typing "-50"
           />
         </label>
         {tooHigh && <p className="text-sm text-red-700">The deduction can&apos;t be higher than the deposit.</p>}
