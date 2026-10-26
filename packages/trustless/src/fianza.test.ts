@@ -180,7 +180,11 @@ describe("parar y resolver", () => {
       { address: TENANT, amount: 0.00004 },
       { address: LANDLORD, amount: 0.00004 },
     ]);
+    // Con todo el sobrante para la tesorería no quedan distribuciones vacías.
+    expect(buildWithdrawYieldBody(resolved, STAFF, 1000n, 5000, 10_000).distributions).toEqual([{ address: TREASURY, amount: 0.0001 }]);
     expect(() => buildWithdrawYieldBody(resolved, STAFF, 1n, 0, 10_001)).toThrow(RangeError);
+    // Los controles de #72 siguen valiendo con comisión.
+    expect(code(() => buildWithdrawYieldBody(stopped, STAFF, 1000n, 0, 2000))).toBe("NOT_SETTLED");
   });
 });
 
@@ -188,13 +192,11 @@ describe("isContractAddress", () => {
   it("distingue passkeys (C…) de cuentas clásicas (G…)", () => {
     expect(isContractAddress(TENANT)).toBe(true);
     expect(isContractAddress(LANDLORD)).toBe(false);
-  });
-
-  it("exige el formato completo, no solo la C inicial", () => {
+    // Solo el formato StrKey completo: C + 55 caracteres base32.
     expect(isContractAddress("C")).toBe(false);
-    expect(isContractAddress("CALLE MAYOR 1")).toBe(false);
+    expect(isContractAddress(`${TENANT}B`)).toBe(false);
     expect(isContractAddress(TENANT.toLowerCase())).toBe(false);
-    expect(isContractAddress(`${TENANT}A`)).toBe(false);
+    expect(isContractAddress("CALLE MAYOR 1")).toBe(false);
     expect(isContractAddress(TENANT.slice(0, 55) + "1")).toBe(false); // 1 no es base32
   });
 });
