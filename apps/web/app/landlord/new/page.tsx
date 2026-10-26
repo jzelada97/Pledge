@@ -23,7 +23,7 @@ import { useI18n } from "@/lib/i18n/client";
 import type { Messages } from "@/lib/i18n/messages";
 import { breakdown, split } from "@/lib/split";
 import { DEFAULT_STRATEGY_ID, STRATEGIES } from "@/lib/strategies";
-import { useSign } from "@/lib/use-sign";
+import { useLive } from "@/components/live-provider";
 import { yieldGoesTo } from "@/lib/yield-policy";
 
 const EXAMPLE_APY = 0.065; // placeholder for the live APY read from Strategy.apy_pool
@@ -64,10 +64,15 @@ export default function NewDeposit() {
     mode: "onTouched",
   });
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
-  const { run, busy, phaseText } = useSign({
-    success: c.success,
-    onDone: () => setInviteUrl(`${window.location.origin}/i/8#c=example-invitation-code`),
-  });
+  const { address } = useLive();
+  // Plan A: el escrow se despliega cuando el inquilino acepta (hace falta su cuenta). Aquí solo se genera el
+  // enlace con el casero, el importe y el fin del contrato, que fija el plazo de reclamación (#115).
+  const run = (v: Values) => {
+    const endTs = Math.floor(Date.now() / 1000) + v.months * 30 * 86_400;
+    setInviteUrl(`${window.location.origin}/i/1?l=${address}&a=${v.amount}&e=${endTs}`);
+  };
+  const busy = false;
+  const phaseText = "";
 
   const watched = form.watch();
   const { strategyId } = watched;

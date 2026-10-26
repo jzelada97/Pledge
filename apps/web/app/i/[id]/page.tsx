@@ -15,7 +15,7 @@ import { toUnits } from "@/lib/format";
 // never from the URL (WEB-11 v2). The id resolves to the escrow with factory.escrow_of(id).
 export default async function Invitation({ params, searchParams }: PageProps<"/i/[id]">) {
   const { id } = await params;
-  const { check, l, a } = await searchParams; // ?check=fail previews the WEB-14 mismatch state; ?l=<casero>&a=<importe> para la demo real
+  const { check, l, a, e } = await searchParams; // ?check=fail previews the WEB-14 mismatch state; ?l=<casero>&a=<importe> para la demo real
   const d = depositById(id);
   if (!d) notFound();
   const { t, f } = await getI18n();
@@ -37,7 +37,8 @@ export default async function Invitation({ params, searchParams }: PageProps<"/i
     );
   }
 
-  const terms = { ...d.data.terms, ...(typeof a === "string" && Number(a) > 0 ? { amount: toUnits(Number(a)) } : {}) };
+  const endTs = typeof e === "string" && /^\d{9,12}$/.test(e) ? Number(e) : undefined;
+  const terms = { ...d.data.terms, ...(typeof a === "string" && Number(a) > 0 ? { amount: toUnits(Number(a)) } : {}), ...(endTs ? { end_ts: BigInt(endTs) } : {}) };
   const landlord = typeof l === "string" && l ? l : d.data.terms.landlord;
   const amountDec = typeof a === "string" && Number(a) > 0 ? a : (Number(terms.amount) / 1e7).toString();
   const copy = t.strategies[terms.strategy.id];
@@ -48,6 +49,7 @@ export default async function Invitation({ params, searchParams }: PageProps<"/i
         amount={f.money(terms.amount)}
         amountDec={amountDec}
         landlord={landlord}
+        endTs={endTs}
         termsMatch={check !== "fail"}
         simulatedRamp
         review={

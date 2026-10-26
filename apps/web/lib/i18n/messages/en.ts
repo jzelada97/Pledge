@@ -308,6 +308,20 @@ export const en = {
     paid: { title: "Your deposit is paid", body: "You'll get it back, with its yield, when your landlord approves and you release it.", cta: "See my deposit" },
   },
 
+  live: {
+    signIn: "Sign in with Face ID",
+    signedIn: "Signed in",
+    landlordLead: "Your deposits live in your passkey account. Sign in to see them and send invitations.",
+    tenantLead: "Sign in with the account you created when you paid your deposit.",
+    contract: "Contract",
+    claimableFrom: "You can claim it from",
+    claimTitle: "Your landlord hasn't answered",
+    claimBody: "The deadline has passed without an approval or a dispute. You can claim your deposit in full.",
+    claimTodo: "You can claim it now",
+    claim: "Claim my deposit",
+    claimed: "Claimed. It's on its way to your account.",
+    claimPending: "Claim sent. The Pledge team confirms the return.",
+  },
   errors: {
     title: "Something went wrong",
     body: "We couldn't load this page. Check your connection and try again.",

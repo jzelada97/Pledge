@@ -1,24 +1,26 @@
+"use client";
+
 import { BellIcon, ChevronRightIcon, LandmarkIcon, SproutIcon } from "lucide-react";
 import Link from "next/link";
-import { DevNote } from "@/components/dev-note";
 import { Group } from "@/components/grouped";
+import { useLive } from "@/components/live-provider";
 import { PaneBody, PaneToolbar } from "@/components/pane";
 import { StatusLine } from "@/components/status-badge";
-import { DEPOSITS } from "@/lib/fixtures";
-import { getI18n } from "@/lib/i18n/server";
+import { Spinner } from "@/components/ui/spinner";
+import { useI18n } from "@/lib/i18n/client";
 import { landlordList, needsAction } from "@/lib/landlord-list";
+import { shortId } from "@/lib/live";
 import { cn } from "@/lib/utils";
-
-export const dynamic = "force-dynamic";
 
 // Desktop detail pane with no deposit selected: the totals and what needs an answer.
 // On phones this pane is hidden and /landlord shows the list instead.
-export default async function LandlordOverview() {
-  const i18n = await getI18n();
+export default function LandlordOverview() {
+  const i18n = useI18n();
   const { t, f } = i18n;
   const o = t.landlord.overview;
-  const { summary } = landlordList(i18n);
-  const waiting = DEPOSITS.filter(needsAction);
+  const { rows, error } = useLive();
+  const { summary } = landlordList(i18n, rows ?? []);
+  const waiting = (rows ?? []).filter(needsAction);
   const stats = [
     { icon: LandmarkIcon, label: t.landlord.held, value: summary.held, hint: o.heldHint(summary.heldCount) },
     { icon: SproutIcon, label: t.landlord.yieldSoFar, value: summary.yieldSoFar, hint: t.landlord.estimatedVariable },
@@ -29,6 +31,12 @@ export default async function LandlordOverview() {
     <>
       <PaneToolbar title={o.title} />
       <PaneBody>
+        {rows === null && !error && (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner aria-hidden /> {t.common.loadingDeposits}
+          </p>
+        )}
+        {error && <p className="text-sm text-destructive">{error}</p>}
         <dl className="grid gap-4 sm:grid-cols-2">
           {stats.map((s, i) => (
             <div
@@ -51,14 +59,14 @@ export default async function LandlordOverview() {
           <Group title={o.needsAnswer} footer={o.needsAnswerFooter}>
             <ul className="divide-y">
               {waiting.map((d) => (
-                <li key={d.id.toString()}>
+                <li key={d.escrow}>
                   <Link
-                    href={`/landlord/deposits/${d.id}?show=answer`}
+                    href={`/landlord/deposits/${d.escrow}?show=answer`}
                     className="-mx-4 flex min-h-14 items-center gap-3 px-4 py-3 hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                   >
                     <span className="flex-1">
                       <span className="block font-semibold">
-                        {t.common.deposit(d.id.toString())} · {f.money(d.data.terms.amount)}
+                        {t.common.deposit(shortId(d.escrow))} · {f.money(d.data.terms.amount)}
                       </span>
                       <StatusLine status={d.status} />
                     </span>
@@ -71,10 +79,6 @@ export default async function LandlordOverview() {
         )}
 
         <p className="text-sm text-muted-foreground">{o.disclaimer}</p>
-        <DevNote>
-          Data: factory.list_by_landlord → get_fianzas (25 per page, no vault calls). Live yield = shares × price per share,
-          one read per vault, refreshed every 5 s.
-        </DevNote>
       </PaneBody>
     </>
   );
