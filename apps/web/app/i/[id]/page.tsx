@@ -38,7 +38,6 @@ export default async function Invitation({ params, searchParams }: PageProps<"/i
 
   const { terms } = d.data;
   const copy = t.strategies[terms.strategy.id];
-  const reviewDays = Number(terms.review_timeout_secs) / 86_400;
 
   return (
     <TenantShell>
@@ -58,11 +57,9 @@ export default async function Invitation({ params, searchParams }: PageProps<"/i
               <DetailList>
                 <DetailRow label={x.deposit} value={f.money(terms.amount)} strong />
                 <DetailRow label={x.contractEnds} value={f.date(terms.end_ts)} />
-                <DetailRow label={x.noResponse} value={x.claimFrom(f.date(d.timeout_at))} />
                 <DetailRow label={x.yieldGoesTo} value={yieldGoesTo(t, f, terms.tenant_yield_bps, "tenant")} />
-                <DetailRow label={x.platformFee} value={f.percent(terms.platform_fee_bps)} />
-                <DetailRow label={x.stopCost} value={f.money(terms.stop_bond)} />
-                <DetailRow label={x.decidedBy} value={x.staffWithin(reviewDays)} />
+                <DetailRow label={x.twFee} value={x.twFeeValue} />
+                <DetailRow label={x.decidedBy} value={x.staffDecides} />
               </DetailList>
             </Group>
 

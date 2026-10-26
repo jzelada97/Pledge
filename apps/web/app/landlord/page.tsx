@@ -62,7 +62,6 @@ export default async function LandlordOverview() {
                       </span>
                       <StatusLine status={d.status} />
                     </span>
-                    <span className="text-sm text-muted-foreground">{o.tenantCanClaim(f.daysFromNow(d.timeout_at))}</span>
                     <ChevronRightIcon className="size-4 text-muted-foreground" aria-hidden />
                   </Link>
                 </li>

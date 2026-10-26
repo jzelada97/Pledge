@@ -25,7 +25,7 @@ function meta(d: DepositRow, t: Messages, f: Formatters): string {
   const m = t.landlord.meta;
   if (d.status === "Proposed") return m.invitationSent;
   if (d.status === "Settled") return m.released;
-  if (d.status === "Stopped" || d.status === "UnderReview") return m.decision(f.daysFromNow(d.review_deadline));
+  if (d.status === "Stopped" || d.status === "UnderReview") return m.underReview;
   return m.ends(f.daysFromNow(d.data.terms.end_ts));
 }
 

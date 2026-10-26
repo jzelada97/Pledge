@@ -21,7 +21,7 @@ import { CONFIG } from "@/lib/fixtures";
 import { toUnits } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import type { Messages } from "@/lib/i18n/messages";
-import { breakdown, computeStopBond, split } from "@/lib/split";
+import { breakdown, split } from "@/lib/split";
 import { DEFAULT_STRATEGY_ID, STRATEGIES } from "@/lib/strategies";
 import { useSign } from "@/lib/use-sign";
 import { yieldGoesTo } from "@/lib/yield-policy";
@@ -77,7 +77,6 @@ export default function NewDeposit() {
   const earns = strategyId === "usdc_fixed" || strategyId === "usdc_mock";
   const exampleYield = earns ? toUnits(amount * EXAMPLE_APY * (months / 12)) : 0n;
   const b = breakdown(split(units, units + exampleYield, 0n, CONFIG.platform_fee_bps, CONFIG.tenant_yield_bps), units);
-  const bond = computeStopBond(units, CONFIG.stop_bond_min, CONFIG.stop_bond_bps);
   const copy = t.strategies[strategyId] ?? t.strategies[DEFAULT_STRATEGY_ID];
 
   if (inviteUrl) {
@@ -172,7 +171,7 @@ export default function NewDeposit() {
                 <DetailRow indent label={c.platformFee(f.percent(CONFIG.platform_fee_bps))} value={f.money(b.platformFee)} />
                 {CONFIG.tenant_yield_bps > 0 && <DetailRow indent label={c.tenantShare} value={f.money(b.tenantYield)} />}
                 <DetailRow indent label={c.yourShare} value={f.money(b.landlordYield)} />
-                <DetailRow label={c.stopWouldPay} value={f.money(bond)} />
+                <DetailRow label={t.invitation.twFee} value={t.invitation.twFeeValue} />
               </DetailList>
             </Group>
 
