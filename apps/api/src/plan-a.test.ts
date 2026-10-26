@@ -76,6 +76,9 @@ function fakeChain() {
   return { chain, builds };
 }
 
+/** Saldos que devuelve get-multiple-escrow-balance en la API simulada (por contractId). */
+const balances: Record<string, number> = {};
+
 /** API de TW simulada: registra las llamadas y responde con fixtures. */
 function fakeTw(escrows: Escrow[] = [escrow()]) {
   const calls: Array<{ method: string; path: string; body?: any; key: string | null }> = [];
@@ -102,11 +105,16 @@ function fakeTw(escrows: Escrow[] = [escrow()]) {
     if (url.pathname === "/helper/send-transaction") return Response.json({ status: "SUCCESS", contractId: NEW_ESCROW });
     if (url.pathname === "/indexer/update-from-txhash") return Response.json({ ok: true });
     // Acciones de cuentas G: TW devuelve el XDR con el firmante del rol como origen.
+    if (url.pathname === "/helper/get-multiple-escrow-balance") {
+      return Response.json(url.searchParams.getAll("addresses[]").map((a) => ({ address: a, balance: balances[a] ?? 0 })));
+    }
     const signerOf: Record<string, string | undefined> = {
       "/escrow/single-release/fund-escrow": body?.signer,
       "/escrow/single-release/approve-milestone": body?.approver,
       "/escrow/single-release/release-funds": body?.releaseSigner,
       "/escrow/single-release/dispute-escrow": body?.signer,
+      "/escrow/single-release/resolve-dispute": body?.disputeResolver,
+      "/escrow/single-release/withdraw-remaining-funds": body?.disputeResolver,
     };
     if (url.pathname in signerOf) {
       const source = signerOf[url.pathname];
@@ -323,6 +331,90 @@ describe("plan A: fondear, aprobar, liberar y parar", () => {
     const pk = setup({}, [escrow({ roles: { ...escrow().roles, approver: TENANT, serviceProvider: TENANT, releaseSigner: LANDLORD, receiver: LANDLORD } })]);
     expect((await pk.post(`/fianzas/v1/fianzas/${ESCROW}/stop`, { signer: TENANT })).status).toBe(200);
     expect(pk.builds[0]).toMatchObject({ fn: "dispute_escrow", signer: TENANT });
+  });
+});
+
+describe("plan A: resolver y repartir el rendimiento (staff)", () => {
+  const STAFF = deployments.staff[0]!;
+  const stopped = () => escrow({ flags: { disputed: true, released: false, resolved: false } });
+  const resolved = () => escrow({ flags: { disputed: true, released: false, resolved: true } });
+
+  it("resolve reparte el importe fondeado: deducción al casero, resto al inquilino, vía resolve-dispute de TW", async () => {
+    const { post, calls } = setup({}, [stopped()]);
+    const res = await post(`/fianzas/v1/fianzas/${ESCROW}/resolve`, { resolver: STAFF, deduction: 100, stopJustified: true });
+    expect(res.status).toBe(200);
+    const b = await json(res);
+    expect(b.distributions).toEqual([
+      { address: TENANT, amount: "400.0000000" },
+      { address: LANDLORD, amount: "100.0000000" },
+    ]);
+    expect(TransactionBuilder.fromXDR(b.unsignedXdr, NET)).toMatchObject({ source: STAFF });
+    expect(calls.find((c) => c.path.includes("resolve-dispute"))!.body).toEqual({
+      contractId: ESCROW,
+      disputeResolver: STAFF,
+      distributions: [
+        { address: TENANT, amount: 400 },
+        { address: LANDLORD, amount: 100 },
+      ],
+    });
+  });
+
+  it("resolve rechaza deducción sin justificar, fianzas no paradas, resolvers ajenos y passkeys", async () => {
+    const { post } = setup({}, [stopped()]);
+    const incoherent = await post(`/fianzas/v1/fianzas/${ESCROW}/resolve`, { resolver: STAFF, deduction: 1, stopJustified: false });
+    expect([incoherent.status, (await json(incoherent)).code]).toEqual([422, "FZ_INCOHERENT_RESOLUTION"]);
+    const stranger = await post(`/fianzas/v1/fianzas/${ESCROW}/resolve`, { resolver: LANDLORD, deduction: 0, stopJustified: true });
+    expect((await json(stranger)).code).toBe("FZ_NOT_RESOLVER");
+    const passkey = await post(`/fianzas/v1/fianzas/${ESCROW}/resolve`, { resolver: TENANT, deduction: 0, stopJustified: true });
+    expect((await json(passkey)).code).toBe("FZ_SIGNER_MUST_BE_G");
+    const active = setup();
+    const notStopped = await active.post(`/fianzas/v1/fianzas/${ESCROW}/resolve`, { resolver: STAFF, deduction: 0, stopJustified: true });
+    expect((await json(notStopped)).code).toBe("FZ_NOT_DISPUTED");
+  });
+
+  it("distribute-yield reparte el sobrante exacto de getBalances con la comisión configurada", async () => {
+    balances[ESCROW] = 0.0001; // 1000 stroops de rendimiento tras resolver
+    try {
+      const { post, calls } = setup({ TW_PLATFORM_FEE_BPS: "2000" }, [resolved()]);
+      const res = await post(`/fianzas/v1/fianzas/${ESCROW}/distribute-yield`, { resolver: STAFF });
+      expect(res.status).toBe(200);
+      const b = await json(res);
+      expect(b).toMatchObject({ remaining: "0.0001000", tenantYieldBps: 0, platformFeeBps: 2000 });
+      expect(b.distributions).toEqual([
+        { address: deployments.treasury, amount: "0.0000200" },
+        { address: LANDLORD, amount: "0.0000800" },
+      ]);
+      expect(calls.find((c) => c.path.includes("withdraw-remaining-funds"))!.body.disputeResolver).toBe(STAFF);
+      // Con la fianza aún activa no hay nada que repartir.
+      const active = setup({ TW_PLATFORM_FEE_BPS: "2000" });
+      expect((await json(await active.post(`/fianzas/v1/fianzas/${ESCROW}/distribute-yield`, { resolver: STAFF }))).code).toBe("FZ_NOT_SETTLED");
+    } finally {
+      delete balances[ESCROW];
+    }
+  });
+
+  it("preview-settlement estima el reparto de una fianza parada con el saldo de hoy", async () => {
+    const { get } = setup({}, [stopped()]); // balance 500.0000893
+    const p = await json(await get(`/fianzas/v1/fianzas/${ESCROW}/preview-settlement?deduction=100`));
+    expect(p).toMatchObject({
+      estimated: true,
+      total: "500.0000893",
+      principalBack: "500.0000000",
+      deduction: "100.0000000",
+      yieldTotal: "0.0000893",
+      toTenant: "400.0000000",
+      toLandlord: "100.0000893", // Portugal: el rendimiento al casero
+      toTreasury: "0.0000000",
+    });
+    expect((await get(`/fianzas/v1/fianzas/${ESCROW}/preview-settlement?deduction=501`)).status).toBe(422);
+  });
+
+  it("lo que TW no tiene responde 501 con el sustituto", async () => {
+    const { post } = setup();
+    for (const a of ["assign-expert", "record-report", "claim-timeout", "claim-review-timeout"]) {
+      const res = await post(`/fianzas/v1/fianzas/${ESCROW}/${a}`, { signer: STAFF });
+      expect([a, res.status, (await json(res)).code]).toEqual([a, 501, "FZ_ENDPOINT_NOT_SUPPORTED"]);
+    }
   });
 });
 

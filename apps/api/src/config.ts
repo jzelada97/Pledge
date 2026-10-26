@@ -64,6 +64,8 @@ export interface TrustlessConfig {
   baseUrl?: string;
   /** Cuenta G de la tesorería que firma los despliegues en el servidor (decisión 1 de #84). */
   treasurySecret: string | null;
+  /** Comisión de plataforma sobre el rendimiento sobrante tras resolver (bps). 0 hasta que el equipo decida. */
+  platformFeeBps: number;
 }
 
 export type Backend = "trustless" | "factory";
@@ -106,7 +108,9 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env, dep: Dep
     relayer: env.RELAYER_API_KEY ? { url: env.RELAYER_URL ?? dep.relayer, apiKey: env.RELAYER_API_KEY } : null,
     ramp: env.RAMP_FAUCET_SECRET ? { faucetSecret: env.RAMP_FAUCET_SECRET, enabled: env.RAMP_ENABLED !== "false" } : null,
     apiKeys,
-    trustless: env.TW_API_KEY ? { apiKey: env.TW_API_KEY, baseUrl: env.TW_API_URL, treasurySecret: env.TREASURY_SECRET ?? null } : null,
+    trustless: env.TW_API_KEY
+      ? { apiKey: env.TW_API_KEY, baseUrl: env.TW_API_URL, treasurySecret: env.TREASURY_SECRET ?? null, platformFeeBps: Number(env.TW_PLATFORM_FEE_BPS ?? 0) }
+      : null,
     backend: env.FIANZAS_BACKEND === "factory" ? "factory" : env.FIANZAS_BACKEND === "trustless" || env.TW_API_KEY ? "trustless" : "factory",
   };
 }
