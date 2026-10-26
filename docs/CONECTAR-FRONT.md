@@ -23,4 +23,4 @@ Rama: `p4/textos-plan-a` (PR #113), al día con `main`. Modo MVP (`docs/DECISION
 6. [ ] Probar en local con `.env.local` en la raíz: `TW_API_KEY`, `TREASURY_SECRET`, `RELAYER_API_KEY`, `RAMP_ENABLED=1`, `RAMP_FAUCET_SECRET` (pedir a Jose).
 
 ## Estado
-- Pasos 1–5 hechos en código (typecheck en verde): `lib/pledge.ts`, invitación conectada (`/i/1?l=<casero>&a=<importe>`) y página `/demo` (cuenta, link del casero, fianzas reales, aprobar y recuperar). **Falta el paso 6: probarlo** con `.env.local` (las claves de la tesorería y del ramp las tiene Jose).
+- Pasos 1–5 hechos en código (typecheck en verde): `lib/pledge.ts`, invitación conectada (`/i/1?l=<casero>&a=<importe>`) y página `/demo` (cuenta, link del casero, fianzas reales, aprobar y recuperar). Paso 6 en curso: `apps/web/.env.local` creado (no se sube) y la API responde con `backend: trustless`, `relayer: true` y `ramp: true`. Falta el recorrido en Chrome con dos cuentas (casero e inquilino, dos perfiles de Chrome): `/demo` → link → `/i/1?l=…&a=10` → `/demo` aprobar → `/demo` recuperar.
