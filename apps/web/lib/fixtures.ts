@@ -89,7 +89,7 @@ export const DEPOSITS: DepositRow[] = [
   row(2, "Active", { amount: 1200, endInDays: 305, fundedDaysAgo: 60, accrued: 12.4 }),
   row(3, "Ending", { amount: 950, endInDays: -2, fundedDaysAgo: 365, accrued: 58.1, approvedBy: [ME_TENANT] }),
   row(4, "Stopped", { amount: 1100, endInDays: -5, fundedDaysAgo: 370, accrued: 66.9, stoppedDaysAgo: 1 }),
-  row(5, "UnderReview", { amount: 700, endInDays: -10, fundedDaysAgo: 380, accrued: 44.2, stoppedDaysAgo: 6, expert: true, report: true }),
+  row(5, "Stopped", { amount: 700, endInDays: -10, fundedDaysAgo: 380, accrued: 44.2, stoppedDaysAgo: 6 }),
   row(6, "Settled", { amount: 1000, endInDays: -40, fundedDaysAgo: 400, accrued: 61.0, approvedBy: [ME_TENANT, ME_LANDLORD] }),
   row(7, "Active", { amount: 650, endInDays: 120, fundedDaysAgo: 30, strategyId: "usdc_mock", accrued: 3.3 }),
 ];

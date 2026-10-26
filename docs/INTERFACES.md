@@ -1,5 +1,7 @@
 # Interfaces
 
+> **Solo existe el plan A** (`docs/DECISIONS.md`, 26-oct). Sigue vigente la **§ 8**, la API entre el front y `apps/api`, con las rutas del plan A (`apps/api/src/plan-a/`), y las secciones de `packages/wallet` y `packages/anchor`. Todo lo que describe el escrow propio, la `FianzaFactory`, `GlobalConfig`, el stop bond, el perito o los plazos on-chain es del **plan B, descartado**: histórico, no lo uses de referencia. La liberación a plazo del plan A la aplica la plataforma (`claim-timeout`, § 8, #115). El mapeo de la fianza al escrow de Trustless Work está en `packages/trustless/CLAUDE.md`.
+
 **Estado: BORRADOR v3. Se congela en G1 (hora 2).** A partir de ahí, cualquier cambio necesita un issue "Cambio de interfaz" y la aprobación del dueño de cada área afectada. Editar este archivo requiere `/lock interfaces`.
 
 Fuente: `.kiro/pipeline/architecture.md` § 6 (fork de Trustless Work + DeFindex + `FianzaFactory` + API compatible), con los ajustes de seguridad de `.kiro/pipeline/security.md` aplicados. Si hay discrepancia, manda este archivo.

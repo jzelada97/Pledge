@@ -13,7 +13,7 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ---
 
-## 2026-10-26 11:30 · Liberación a plazo en el plan A: la garantía la da la plataforma, no la cadena (#115)
+## 2026-10-26 11:45 · Liberación a plazo en el plan A: la garantía la da la plataforma, no la cadena (#115)
 - **Contexto:** el escrow de Trustless Work no tiene plazos: sin aprobación del casero, el inquilino no puede recuperar la fianza solo. De las tres opciones de #115 (fork del contrato de TW, volver al plan B, o regla en la plataforma) se elige la tercera para la demo.
 - **Decisión:**
   - La fecha de fin del alquiler (`endTs`) va en el engagementId del escrow (`fianza-<id>-end<endTs>`), que es inmutable y público. `claimableAt = endTs + TW_CLAIM_TIMEOUT_SECS` (30 días en producción; 120 s en la demo).
@@ -22,6 +22,38 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
   - Textos del front (P3): «Si a los 30 días del fin del contrato el casero no ha aprobado ni abierto una disputa, puedes reclamar la fianza y te la devolvemos íntegra».
 - **Descartado para la demo:** fork del contrato de TW con `claim_after_timeout` on-chain (queda como roadmap: es lo único que da la garantía sin confiar en la plataforma) y volver al plan B.
 - Decide: P2 con P1 · Implementa: P2 (API) · Probado en testnet: `CA5U6SNN…JERA`, disputa `b9a32710…`, resolve `99db6986…`.
+
+## 2026-10-26 11:30 · Solo existe el plan A: el plan B queda descartado (lo leen todas las IAs)
+- **Decisión:** el producto (Pledge) es **solo el plan A**. Cada fianza es un escrow single-release con rendimiento de Trustless Work (TrustYield, vault de DeFindex sobre Blend), creado y gestionado con su API desde `apps/api` mediante `@fianzas/trustless`.
+- **El plan B queda descartado para siempre**, no "en reserva". Comprende:
+  - el escrow fork de TW y la `FianzaFactory` (`contracts/`);
+  - `packages/bindings`;
+  - el backend `factory` de `apps/api`;
+  - #48 y #58.
+
+  No se desarrolla, no se despliega, no se revisa y **no se tiene en cuenta en ninguna parte**: ni en código nuevo, ni en la UI, ni en los docs, el README o el pitch.
+- **Conceptos que no existen en el plan A** y no deben aparecer:
+  - perito;
+  - depósito por parar (*stop bond*, "good-faith deposit");
+  - plazos **en el contrato** (*timeout* on-chain, "el staff decide en 30 días"). El plazo de 30 días para que el inquilino reclame sí existe, pero lo aplica la plataforma, no la cadena: ver la entrada de las 11:45 (#115);
+  - `stop_justified` con efecto en un bond;
+  - estrategias del registro de la factory.
+- **Así es el plan A**, mapeo en `packages/trustless/CLAUDE.md`:
+  - el casero aprueba y el inquilino libera (fianza + rendimiento − 0,3 % de TW);
+  - solo el casero para, antes de aprobar y gratis;
+  - el staff resuelve: deducción al casero y resto al inquilino;
+  - el rendimiento sobrante se reparte después (`distribute-yield`: comisión de plataforma y `tenantYieldBps`).
+- **Qué queda como histórico (no lo uses de referencia):**
+  - `contracts/`, `packages/bindings`;
+  - las secciones de contratos y factory de `docs/INTERFACES.md`;
+  - `.kiro/pipeline/` y las fases de `docs/PIPELINE.md`;
+  - las entradas de abajo que hablan del plan B "en reserva".
+- **Pendiente:**
+  - la UI aún tiene textos del plan B (perito, depósito de buena fe): hay que quitarlos; el texto de la reclamación a los 30 días se sustituye por el de la entrada de las 11:45;
+  - el backend `factory` de `apps/api` (`FIANZAS_BACKEND=factory`) se puede borrar cuando haya tiempo (P2).
+- **Sustituye a:** la decisión de dejar el plan B en reserva (#60, #67 y la entrada del 2026-10-25 de abajo).
+- **Motivo:** el plan A ya funciona de punta a punta en testnet (#80, #84, #104). Mantener dos planes confunde al equipo, a las IAs y al jurado.
+- Decide: P1 (Carlos), con el equipo · Revisa: P2
 
 ## 2026-10-26 11:00 · P4 pasa al pitch; el front queda libre para el equipo
 - **Decisión:** Diego (P4) se dedica al pitch (`pitch/`). `apps/web` y `apps/backoffice` pasan a ser **áreas libres** (`owner: "*"` en `harness/team.json`, como `docs/`): cualquiera las edita sin lock ni `cross-area`. `apps/web/app/api/` sigue siendo del área `api` (P2). El trabajo del front se reparte con issues asignados: conectar las pantallas del plan A con `apps/api` (#84), el flujo de la passkey del inquilino (#82) y el backoffice del staff (resolver y `distribute-yield`, #104).

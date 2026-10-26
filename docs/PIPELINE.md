@@ -1,5 +1,7 @@
 # Pipeline de 28 horas
 
+> **Histórico.** Este plan describe el plan B (escrow y factory propios), **descartado** el 26-oct. Solo existe el plan A: ver `docs/DECISIONS.md` y `packages/trustless/CLAUDE.md`. Para las fases, quédate solo con lo que no sea de contratos.
+
 Cada fase termina en una **puerta (gate)**. No se pasa de fase hasta cumplirla. Si una puerta se retrasa más de 1 hora, se recorta alcance (ver "Qué se recorta primero"), nunca se recortan los tests del contrato ni de la factory.
 
 Hora 0 = inicio de la hackatón. Arquitectura de referencia: `.kiro/pipeline/architecture.md` (v2: fork de Trustless Work + `FianzaFactory`), § 10 (spike) y § 11 (orden por rol). Seguridad: `.kiro/pipeline/security.md` § 13.

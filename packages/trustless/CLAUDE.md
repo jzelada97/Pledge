@@ -29,10 +29,10 @@
 - La comisión de TW (0,3 %) y `platformFee` se cobran sobre **todo lo retirado**, capital incluido: el inquilino solo recupera el 100 % si el rendimiento supera ese 0,3 %. `platformFee = 0` de momento.
 - El saldo crece en cada ledger; justo después de fondear puede quedar 1 stroop por debajo del importe. No compares `balance == amount`.
 
-## Huecos frente al plan B (no los tapes aquí)
+## Límites del plan A (no los tapes aquí)
+Solo existe el plan A. El plan B está descartado: ver `docs/DECISIONS.md`.
 - Las acciones de una passkey no pueden ir por la API de TW: hay que construirlas contra el contrato (#61, #66).
-- Sin stop bond ni perito pagado por el bond.
-- Sin timeout del casero ni de revisión: el inquilino no puede reclamar solo.
+- No hay depósito por parar, ni perito, ni plazos: si el casero no responde, el inquilino no puede reclamar solo.
 - Roles fijados al desplegar: el escrow se despliega cuando el inquilino acepta la invitación (hace falta su dirección).
 - **El reparto por jurisdicción solo se aplica en el camino de disputa.** En el camino normal (el casero aprueba y el inquilino libera), `release-funds` paga capital **y rendimiento** al inquilino. Eso contradice la decisión para Portugal (rendimiento al casero y 20 % para la plataforma) y la API de TW no permite evitarlo. **Decisión de equipo pendiente**, junto con la comisión del 0,3 % de TW sobre el capital.
 - **La plataforma no ingresa nada en el plan A.** Con `platformFee = 0` (la de TW se cobra sobre el capital) solo puede cobrar en `withdraw-remaining-funds` vía `platformFeeBps`, y eso solo ocurre tras una disputa. **Decisión de producto pendiente:** qué porcentaje y si compensa cobrar sobre el capital en `platformFee`.
