@@ -66,12 +66,13 @@ export async function verifyAuthTree(
   inv: Invocation,
   signer: string,
   cfg: ContractsConfig,
-  opts: { expectedTransferAmount?: bigint } = {},
+  opts: { expectedTransferAmount?: bigint; expectedContract?: string } = {},
 ): Promise<xdr.SorobanAuthorizationEntry | null> {
   if (inv.func.switch().name !== "hostFunctionTypeInvokeContract") mismatch("no es una llamada a contrato");
   const args = inv.func.invokeContract();
   const contract = contractOf(args);
   const fn = fnNameOf(args);
+  if (opts.expectedContract !== undefined && contract !== opts.expectedContract) mismatch(`${fn} sobre otro contrato`);
 
   const target = await targetOf(contract, fn, cfg);
 
@@ -99,13 +100,13 @@ export async function verifyAuthTree(
     if (feeTo !== cfg.trustless!.feeAddress) mismatch("release_funds con una dirección de comisión que no es la de TW");
   }
   if (TRANSFER_FUNCTIONS.has(fn)) {
-    const amount =
-      fn !== "fund_escrow"
-        ? opts.expectedTransferAmount
-        : target === "trustless"
-          ? trustlessFundAmount(args)
-          : fundAmount(args);
-    if (amount === undefined) mismatch("stop necesita expectedTransferAmount (terms.stop_bond)");
+    // El importe es el que ve el usuario (WEB-3, N-10): nunca se saca solo de la transacción, que la construye la API.
+    const amount = opts.expectedTransferAmount;
+    if (amount === undefined) mismatch(`${fn} necesita expectedTransferAmount`);
+    if (fn === "fund_escrow") {
+      const txAmount = target === "trustless" ? trustlessFundAmount(args) : fundAmount(args);
+      if (txAmount !== amount) mismatch(`fund_escrow por ${txAmount} y el usuario ha visto ${amount}`);
+    }
     if (subs.length !== 1 || !isExactTransfer(subs[0], cfg.token, signer, contract, amount)) {
       mismatch(`${fn} debe autorizar solo token.transfer(firmante, escrow, ${amount})`);
     }

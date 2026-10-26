@@ -590,7 +590,8 @@ import { createWallet, FakeWallet, WalletError } from "@fianzas/wallet";
 export type SignPhase = "verifying" | "signing" | "submitting";
 export interface SignAndSendOptions {
   onPhase?: (phase: SignPhase) => void;
-  expectedTransferAmount?: bigint;   // obligatorio en `stop`: terms.stop_bond (para WEB-3)
+  expectedTransferAmount?: bigint;   // obligatorio en `fund_escrow` (la fianza que ve el usuario) y en `stop` (terms.stop_bond)
+  expectedContract?: string;         // opcional: escrow que ve el usuario; si llega, la llamada tiene que ir a él
 }
 
 export interface SignBuiltOptions extends SignAndSendOptions {
@@ -640,9 +641,9 @@ export class WalletError extends Error { code: WalletErrorCode; contractError?: 
 ```
 
 Reglas de `signAndSend` (security WEB-3 v2, AUTH-5):
-- Antes de pedir la passkey decodifica las auth entries de la C-address. La raíz debe ser `deployments.factory` o un escrow con `factory.id_of(addr)` válido, con una función de la lista del Relayer. Las subinvocaciones deben ser **exactamente** las del § 7: en `fund_escrow`, el importe sale de `expected_terms.amount`; en `stop`, de `opts.expectedTransferAmount`. Si no, `AUTH_MISMATCH` y no se firma.
+- Antes de pedir la passkey decodifica las auth entries de la C-address. La raíz debe ser `deployments.factory` o un escrow con `factory.id_of(addr)` válido, con una función de la lista del Relayer. Las subinvocaciones deben ser **exactamente** las del § 7, con el importe de `opts.expectedTransferAmount` (el que ve el usuario, nunca solo el de la transacción, que la construye la API: N-10). En `fund_escrow` además tiene que coincidir con el de la llamada (`expected_terms.amount`, o el tercer argumento en TW). Si falta o no coincide, o la llamada no va a `opts.expectedContract` cuando llega, `AUTH_MISMATCH` y no se firma.
 - Los *claims* no llevan firma. Ninguna entrada puede tener credenciales `SOURCE_ACCOUNT`.
-- **Plan A (escrow de TW, `cfg.trustless`):** funciones `fund_escrow(signer, expected_escrow, amount)` (una sola subinvocación `token.transfer(firmante, escrow, amount)`, con `amount` del tercer argumento), `approve_milestone`, `release_funds` (sin subinvocaciones; el segundo argumento tiene que ser `cfg.trustless.feeAddress`) y `dispute_escrow`. La API de TW no admite una cuenta `C…` como firmante (#61), así que estas llamadas se construyen contra el contrato y se envían por el Relayer.
+- **Plan A (escrow de TW, `cfg.trustless`):** funciones `fund_escrow(signer, expected_escrow, amount)` (una sola subinvocación `token.transfer(firmante, escrow, amount)`, con `amount` del tercer argumento e igual a `opts.expectedTransferAmount`), `approve_milestone`, `release_funds` (sin subinvocaciones; el segundo argumento tiene que ser `cfg.trustless.feeAddress`) y `dispute_escrow`. La API de TW no admite una cuenta `C…` como firmante (#61), así que estas llamadas se construyen contra el contrato y se envían por el Relayer.
 - `signatureExpirationLedger = latestLedger + 60`.
 
 **`@fianzas/wallet/server` (solo servidor, `import "server-only"`):**

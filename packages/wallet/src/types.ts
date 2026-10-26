@@ -5,9 +5,11 @@ export type SignPhase = "verifying" | "signing" | "submitting";
 
 export interface SignAndSendOptions {
   onPhase?: (phase: SignPhase) => void;
-  // Importe exacto de la transferencia anidada en `stop` (terms.stop_bond). Obligatorio para `stop`:
-  // sin él no se puede comprobar el árbol de auth (security WEB-3).
+  // Importe exacto que ve el usuario para la transferencia anidada. Obligatorio en `fund_escrow` (la fianza)
+  // y en `stop` (terms.stop_bond): sin él no se firma (security WEB-3, N-10).
   expectedTransferAmount?: bigint;
+  // Escrow que ve el usuario. Si llega, la llamada tiene que ir a ese contrato.
+  expectedContract?: string;
 }
 
 // Respuesta de los builds de apps/api (INTERFACES § 8): la de TW más la extensión `soroban`.
