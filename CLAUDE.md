@@ -5,7 +5,7 @@ Plataforma para caseros y grandes caseros (marca: **Pledge**). **Solo existe el 
 - **Rendimiento:** el escrow deposita la fianza en un **vault de DeFindex** sobre Blend USDC. Es **variable** y **nunca "sin riesgo"**.
 - **Devolución:** el casero aprueba y el inquilino libera. Recibe fianza + rendimiento − comisiones (Trustless Work cobra un 0,3 % de todo lo retirado).
 - **Parar:** solo el casero, antes de aprobar y sin coste. **El staff resuelve**: la deducción va al casero y el resto al inquilino. El rendimiento que sobra se reparte después (`distribute-yield`): primero la comisión opcional de plataforma y luego según la **jurisdicción** (`tenantYieldBps`; ni casero ni inquilino lo eligen). MVP en **Portugal: al casero**.
-- **No existen** el perito, el depósito por parar (*stop bond*) ni los plazos (*timeouts*). No los uses en código, UI, docs ni pitch.
+- **No existen** el perito, el depósito por parar (*stop bond*) ni los plazos on-chain (*timeouts* del contrato). No los uses en código, UI, docs ni pitch. El plazo de 30 días para que el inquilino reclame sí existe, pero lo aplica la plataforma (`claim-timeout` en `apps/api`, #115).
 - **El inquilino no ve nada de cripto:** usa una cuenta con **passkey**, sin comisiones (las paga nuestro Relayer), y deposita desde el banco vía **anchor (SEP-24**, simulado en testnet).
 - **El plan B está descartado:** el escrow y la factory propios (`contracts/`), `packages/bindings` y el backend `factory` de `apps/api`. Son histórico: no se desarrollan ni se toman como referencia.
 

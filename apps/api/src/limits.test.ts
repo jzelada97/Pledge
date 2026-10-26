@@ -34,6 +34,9 @@ function fakeChain() {
     async wasmHashOf() {
       return null;
     },
+    async getTransaction() {
+      return null;
+    },
   };
   return { chain, reads };
 }

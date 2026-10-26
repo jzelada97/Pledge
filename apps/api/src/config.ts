@@ -66,7 +66,17 @@ export interface TrustlessConfig {
   treasurySecret: string | null;
   /** Comisión de plataforma sobre el rendimiento sobrante tras resolver (bps). 0 hasta que el equipo decida. */
   platformFeeBps: number;
+  /**
+   * Liberación a plazo (#115): cuenta G del staff con la que el servidor resuelve a favor del inquilino
+   * cuando ha pasado el plazo y el casero no ha aprobado ni parado. Sin ella, la API devuelve el XDR
+   * para que el staff lo firme a mano.
+   */
+  staffSecret: string | null;
+  /** Segundos tras `endTs` a partir de los cuales el inquilino puede reclamar (producción 30 días; demo 120). */
+  claimTimeoutSecs: number;
 }
+
+export const DEFAULT_CLAIM_TIMEOUT_SECS = 30 * 24 * 3600;
 
 export type Backend = "trustless" | "factory";
 
@@ -109,7 +119,14 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env, dep: Dep
     ramp: env.RAMP_FAUCET_SECRET ? { faucetSecret: env.RAMP_FAUCET_SECRET, enabled: env.RAMP_ENABLED !== "false" } : null,
     apiKeys,
     trustless: env.TW_API_KEY
-      ? { apiKey: env.TW_API_KEY, baseUrl: env.TW_API_URL, treasurySecret: env.TREASURY_SECRET ?? null, platformFeeBps: Number(env.TW_PLATFORM_FEE_BPS ?? 0) }
+      ? {
+          apiKey: env.TW_API_KEY,
+          baseUrl: env.TW_API_URL,
+          treasurySecret: env.TREASURY_SECRET ?? null,
+          platformFeeBps: Number(env.TW_PLATFORM_FEE_BPS ?? 0),
+          staffSecret: env.STAFF_SECRET ?? null,
+          claimTimeoutSecs: Number(env.TW_CLAIM_TIMEOUT_SECS ?? DEFAULT_CLAIM_TIMEOUT_SECS),
+        }
       : null,
     backend: env.FIANZAS_BACKEND === "factory" ? "factory" : env.FIANZAS_BACKEND === "trustless" || env.TW_API_KEY ? "trustless" : "factory",
   };

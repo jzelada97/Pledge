@@ -9,12 +9,13 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { depositById } from "@/lib/fixtures";
 import { getI18n } from "@/lib/i18n/server";
 import { yieldGoesTo } from "@/lib/yield-policy";
+import { toUnits } from "@/lib/format";
 
 // Tenant invitation: /i/<id>#c=<code>. Everything shown is read from the chain (get_terms + config),
 // never from the URL (WEB-11 v2). The id resolves to the escrow with factory.escrow_of(id).
 export default async function Invitation({ params, searchParams }: PageProps<"/i/[id]">) {
   const { id } = await params;
-  const { check } = await searchParams; // ?check=fail previews the WEB-14 mismatch state
+  const { check, l, a } = await searchParams; // ?check=fail previews the WEB-14 mismatch state; ?l=<casero>&a=<importe> para la demo real
   const d = depositById(id);
   if (!d) notFound();
   const { t, f } = await getI18n();
@@ -36,13 +37,17 @@ export default async function Invitation({ params, searchParams }: PageProps<"/i
     );
   }
 
-  const { terms } = d.data;
+  const terms = { ...d.data.terms, ...(typeof a === "string" && Number(a) > 0 ? { amount: toUnits(Number(a)) } : {}) };
+  const landlord = typeof l === "string" && l ? l : d.data.terms.landlord;
+  const amountDec = typeof a === "string" && Number(a) > 0 ? a : (Number(terms.amount) / 1e7).toString();
   const copy = t.strategies[terms.strategy.id];
 
   return (
     <TenantShell>
       <InvitationFlow
         amount={f.money(terms.amount)}
+        amountDec={amountDec}
+        landlord={landlord}
         termsMatch={check !== "fail"}
         simulatedRamp
         review={

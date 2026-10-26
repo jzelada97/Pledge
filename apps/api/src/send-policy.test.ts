@@ -66,6 +66,9 @@ function setup(dep = deployments, faults: Faults = {}) {
     async latestLedger() {
       return 1000;
     },
+    async getTransaction() {
+      return null;
+    },
     async wasmHashOf(contractId) {
       if (wasmFailures > 0) {
         wasmFailures -= 1;
@@ -202,6 +205,9 @@ function fakeThrowing(): Chain {
       return 1000;
     },
     async wasmHashOf() {
+      return null;
+    },
+    async getTransaction() {
       return null;
     },
   };

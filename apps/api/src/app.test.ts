@@ -45,6 +45,9 @@ const fakeChain: Chain = {
   async wasmHashOf() {
     return null;
   },
+  async getTransaction() {
+    return null;
+  },
 };
 
 const cfg = loadConfigFromEnv({}, deployments); // sin RELAYER_API_KEY ni RAMP_FAUCET_SECRET
