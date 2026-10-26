@@ -45,7 +45,7 @@ export function InvitationFlow(props: { amount: string; amountDec: string; landl
       <Screen ref={heading} icon={CircleCheckIcon} iconClass="bg-success/10 text-success" title={x.paid.title} description={x.paid.body}>
         <BottomBar>
           <Button asChild size="lg">
-            <Link href="/tenant">{x.paid.cta}</Link>
+            <Link href="/demo">{x.paid.cta}</Link>
           </Button>
         </BottomBar>
       </Screen>
