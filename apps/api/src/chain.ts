@@ -50,9 +50,20 @@ export function toDecimal(stroops: bigint | string | number, decimals = 7): stri
   return `${neg ? "-" : ""}${int}.${frac}`;
 }
 
+// Tope de la caché: con muchos contractId distintos un Map sin límite crece sin parar.
+export const CACHE_MAX_ENTRIES = 1000;
+
 export class TtlCache {
   private readonly m = new Map<string, { exp: number; p: Promise<unknown> }>();
-  constructor(private readonly now: () => number = Date.now) {}
+  constructor(
+    private readonly now: () => number = Date.now,
+    private readonly maxEntries = CACHE_MAX_ENTRIES,
+  ) {}
+
+  get size(): number {
+    return this.m.size;
+  }
+
   get<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
     const hit = this.m.get(key);
     if (hit && hit.exp > this.now()) return hit.p as Promise<T>;
@@ -60,8 +71,21 @@ export class TtlCache {
       this.m.delete(key);
       throw e;
     });
+    this.m.delete(key); // vuelve al final del orden de inserción
+    if (this.m.size >= this.maxEntries) this.evict();
     this.m.set(key, { exp: this.now() + ttlMs, p });
     return p;
+  }
+
+  // Primero las caducadas; si no basta, la más antigua (el Map conserva el orden de inserción).
+  private evict(): void {
+    const t = this.now();
+    for (const [k, v] of this.m) if (v.exp <= t) this.m.delete(k);
+    while (this.m.size >= this.maxEntries) {
+      const oldest = this.m.keys().next().value;
+      if (oldest === undefined) break;
+      this.m.delete(oldest);
+    }
   }
 }
 
