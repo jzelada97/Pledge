@@ -36,3 +36,8 @@ Probado en local con Chrome (casero en el perfil normal, inquilino en una ventan
 - Las pantallas de casero e inquilino (`/landlord`, `/tenant`) siguen con `lib/fixtures`. La parte real está en la invitación `/i/1?l=<casero>&a=<importe>` y en `/demo`.
 - `.env.local` va en `apps/web/` (Next solo lo lee ahí): `TW_API_KEY`, `TREASURY_SECRET`, `RELAYER_API_KEY`, `RAMP_FAUCET_SECRET`, `RAMP_ENABLED`, `API_ALLOWED_ORIGINS`.
 - Lock `deps` (#114) tomado por Ricardo para `apps/web/package.json` y `pnpm-lock.yaml`: liberarlo al fusionar el #113.
+
+## Cerrado el 26-oct (Jose, #128 y #130)
+- El `SIMULATION_FAILED` del Relayer era `#3014 ContextRuleIdsLengthMismatch`: la cuenta exige un `contextRuleId` por cada invocación del árbol de auth (`fund_escrow` + el `transfer` anidado) y la wallet mandaba `[0]`. Arreglado en `packages/wallet` (`contextRuleIdsFor`), y el relay ahora escribe la causa en el log.
+- `/landlord` y `/tenant` ya van contra la API con la passkey (lista, aprobar, parar, recuperar, reclamar a plazo). `/demo` queda como vista en crudo.
+- Despliegue: `docs/DEPLOY.md`.
