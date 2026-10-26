@@ -16,6 +16,9 @@ importers:
       '@fianzas/bindings':
         specifier: workspace:*
         version: link:../../packages/bindings
+      '@fianzas/trustless':
+        specifier: workspace:*
+        version: link:../../packages/trustless
       '@fianzas/wallet':
         specifier: workspace:*
         version: link:../../packages/wallet

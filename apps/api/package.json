@@ -16,6 +16,7 @@
   "dependencies": {
     "@fianzas/anchor": "workspace:*",
     "@fianzas/bindings": "workspace:*",
+    "@fianzas/trustless": "workspace:*",
     "@fianzas/wallet": "workspace:*",
     "@hono/zod-validator": "0.9.1",
     "@stellar/stellar-sdk": "16.4.1",
