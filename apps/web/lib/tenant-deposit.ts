@@ -1,9 +1,10 @@
 import { DEPOSITS, ME_TENANT, type DepositRow } from "./fixtures";
-import { date, money, nowSecs } from "./format";
+import { nowSecs, type Formatters } from "./format";
+import type { Messages } from "./i18n/messages";
 import { breakdown, split } from "./split";
 
 // What the tenant's screens derive from one deposit, shared by the list (passes) and the detail screen.
-export function tenantView(d: DepositRow) {
+export function tenantView(d: DepositRow, { t, f }: { t: Messages; f: Formatters }) {
   const { terms, approvals, settlement } = d.data;
   const s = settlement ?? split(terms.amount, terms.amount + d.accrued_yield, 0n, terms.platform_fee_bps, terms.tenant_yield_bps);
   const b = breakdown(s, terms.amount);
@@ -11,7 +12,7 @@ export function tenantView(d: DepositRow) {
   const live = d.status === "Active" || d.status === "Ending";
   const canClaim = live && nowSecs() > d.timeout_at;
   const stopped = d.status === "Stopped" || d.status === "UnderReview";
-  const todo = canClaim ? "You can claim it now" : live && !iApproved ? "Waiting for your approval" : d.status === "Settled" ? "Ready to send to your bank" : undefined;
+  const todo = canClaim ? t.tenant.todo.claim : live && !iApproved ? t.tenant.todo.approve : d.status === "Settled" ? t.tenant.todo.bank : undefined;
   return {
     s,
     b,
@@ -21,12 +22,14 @@ export function tenantView(d: DepositRow) {
     stopped,
     todo,
     pass: {
-      id: d.id.toString(),
-      amount: money(terms.amount),
-      status: d.status,
+      title: t.common.deposit(d.id.toString()),
+      amount: f.money(terms.amount),
+      statusLabel: t.status[d.status],
       facts: [
-        { label: "Contract ends", value: date(terms.end_ts) },
-        { label: d.status === "Settled" ? "You received" : "Comes back", value: d.status === "Settled" ? money(s.to_tenant) : "In full" },
+        { label: t.tenant.contractEnds, value: f.date(terms.end_ts) },
+        d.status === "Settled"
+          ? { label: t.tenant.youReceived, value: f.money(s.to_tenant) }
+          : { label: t.tenant.comesBack, value: t.tenant.inFull },
       ],
     },
   };

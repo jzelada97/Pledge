@@ -7,8 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Group } from "@/components/grouped";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { depositById } from "@/lib/fixtures";
-import { date, money, percent } from "@/lib/format";
-import { RISK_LABEL, STRATEGY_COPY } from "@/lib/strategies";
+import { getI18n } from "@/lib/i18n/server";
 import { yieldGoesTo } from "@/lib/yield-policy";
 
 // Tenant invitation: /i/<id>#c=<code>. Everything shown is read from the chain (get_terms + config),
@@ -18,6 +17,8 @@ export default async function Invitation({ params, searchParams }: PageProps<"/i
   const { check } = await searchParams; // ?check=fail previews the WEB-14 mismatch state
   const d = depositById(id);
   if (!d) notFound();
+  const { t, f } = await getI18n();
+  const x = t.invitation;
 
   if (d.status !== "Proposed") {
     return (
@@ -27,8 +28,8 @@ export default async function Invitation({ params, searchParams }: PageProps<"/i
             <EmptyMedia variant="icon">
               <LinkIcon aria-hidden />
             </EmptyMedia>
-            <EmptyTitle>This link is no longer valid</EmptyTitle>
-            <EmptyDescription>The deposit was already paid or cancelled. Ask your landlord to send you a new invitation.</EmptyDescription>
+            <EmptyTitle>{x.invalid.title}</EmptyTitle>
+            <EmptyDescription>{x.invalid.body}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </TenantShell>
@@ -36,41 +37,41 @@ export default async function Invitation({ params, searchParams }: PageProps<"/i
   }
 
   const { terms } = d.data;
-  const copy = STRATEGY_COPY[terms.strategy.id];
+  const copy = t.strategies[terms.strategy.id];
   const reviewDays = Number(terms.review_timeout_secs) / 86_400;
 
   return (
     <TenantShell>
       <InvitationFlow
-        amount={money(terms.amount)}
+        amount={f.money(terms.amount)}
         termsMatch={check !== "fail"}
         simulatedRamp
         review={
           <>
             <header className="space-y-2 pt-2 text-center">
-              <p className="text-sm font-medium text-muted-foreground">Your room deposit</p>
-              <h1 className="text-5xl font-semibold tracking-tight tabular-nums">{money(terms.amount)}</h1>
-              <p className="text-muted-foreground">Back to you in full when you and your landlord approve.</p>
+              <p className="text-sm font-medium text-muted-foreground">{x.yourDeposit}</p>
+              <h1 className="text-5xl font-semibold tracking-tight tabular-nums">{f.money(terms.amount)}</h1>
+              <p className="text-muted-foreground">{x.backInFull}</p>
             </header>
 
-            <Group title="What you're agreeing to">
+            <Group title={x.agreeing}>
               <DetailList>
-                <DetailRow label="Deposit" value={money(terms.amount)} strong />
-                <DetailRow label="Contract ends" value={date(terms.end_ts)} />
-                <DetailRow label="If your landlord doesn't respond" value={`Claim it from ${date(d.timeout_at)}`} />
-                <DetailRow label="The yield goes to" value={yieldGoesTo(terms.tenant_yield_bps, "tenant")} />
-                <DetailRow label="Platform fee (on the yield only)" value={percent(terms.platform_fee_bps)} />
-                <DetailRow label="Your landlord pays to stop the release" value={money(terms.stop_bond)} />
-                <DetailRow label="If stopped, decided by" value={`Fianzas staff, within ${reviewDays} days`} />
+                <DetailRow label={x.deposit} value={f.money(terms.amount)} strong />
+                <DetailRow label={x.contractEnds} value={f.date(terms.end_ts)} />
+                <DetailRow label={x.noResponse} value={x.claimFrom(f.date(d.timeout_at))} />
+                <DetailRow label={x.yieldGoesTo} value={yieldGoesTo(t, f, terms.tenant_yield_bps, "tenant")} />
+                <DetailRow label={x.platformFee} value={f.percent(terms.platform_fee_bps)} />
+                <DetailRow label={x.stopCost} value={f.money(terms.stop_bond)} />
+                <DetailRow label={x.decidedBy} value={x.staffWithin(reviewDays)} />
               </DetailList>
             </Group>
 
-            <Group title="Where your deposit is kept" footer={copy.risks}>
+            <Group title={x.whereKept} footer={copy.risks}>
               <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 py-3 text-sm">
                 <span className="font-medium">{copy.name}</span>
                 <span className="flex flex-wrap gap-2">
-                  <Badge variant="outline">{RISK_LABEL[terms.strategy.risk]}</Badge>
-                  {terms.strategy.simulated && <Badge className="bg-warning/10 text-warning">Simulated yield</Badge>}
+                  <Badge variant="outline">{t.risk[terms.strategy.risk]}</Badge>
+                  {terms.strategy.simulated && <Badge className="bg-warning/10 text-warning">{t.common.simulatedYield}</Badge>}
                 </span>
               </div>
             </Group>

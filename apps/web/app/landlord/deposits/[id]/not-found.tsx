@@ -3,23 +3,26 @@ import Link from "next/link";
 import { PaneBody, PaneToolbar } from "@/components/pane";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { getI18n } from "@/lib/i18n/server";
 
-export default function DepositNotFound() {
+export default async function DepositNotFound() {
+  const { t } = await getI18n();
+  const n = t.landlord.detail.notFound;
   return (
     <>
-      <PaneToolbar title="Deposit not found" back={{ href: "/landlord", label: "Deposits" }} />
+      <PaneToolbar title={n.toolbar} back={{ href: "/landlord", label: t.common.deposits }} />
       <PaneBody>
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon">
               <SearchXIcon aria-hidden />
             </EmptyMedia>
-            <EmptyTitle>We can&apos;t find that deposit</EmptyTitle>
-            <EmptyDescription>It may have been cancelled, or the link is wrong.</EmptyDescription>
+            <EmptyTitle>{n.title}</EmptyTitle>
+            <EmptyDescription>{n.body}</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button asChild>
-              <Link href="/landlord">Back to deposits</Link>
+              <Link href="/landlord">{t.common.backToDeposits}</Link>
             </Button>
           </EmptyContent>
         </Empty>

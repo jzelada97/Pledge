@@ -1,14 +1,18 @@
 "use client";
 
-import { ChevronLeftIcon, ShieldCheckIcon } from "lucide-react";
+import { ChevronLeftIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { Logo } from "@/components/logo";
+import { PreferencesMenu } from "@/components/preferences-menu";
+import { useI18n } from "@/lib/i18n/client";
 
 // Tenant screens are an iOS-style stack: a frosted navigation bar (back button or brand) and one narrow
 // column, the same width on every device.
 export function TenantShell({ children, back }: { children: ReactNode; back?: { href: string; label: string } }) {
   const pathname = usePathname();
+  const { t } = useI18n();
   return (
     <>
       <header
@@ -29,20 +33,20 @@ export function TenantShell({ children, back }: { children: ReactNode; back?: { 
               href="/"
               className="flex min-h-11 items-center gap-2 rounded-lg px-2 font-semibold tracking-tight focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
             >
-              <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <ShieldCheckIcon className="size-4" aria-hidden />
-              </span>
-              Fianzas
+              <Logo />
             </Link>
           )}
-          {!pathname.startsWith("/tenant") && (
-            <Link
-              href="/tenant"
-              className="inline-flex min-h-11 items-center rounded-lg px-3 text-base font-medium text-primary focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-            >
-              My deposits
-            </Link>
-          )}
+          <div className="flex items-center gap-1">
+            {!pathname.startsWith("/tenant") && (
+              <Link
+                href="/tenant"
+                className="inline-flex min-h-11 items-center rounded-lg px-3 text-base font-medium text-primary focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+              >
+                {t.common.myDeposits}
+              </Link>
+            )}
+            <PreferencesMenu />
+          </div>
         </div>
       </header>
       <main className="mx-auto flex max-w-md flex-col gap-8 px-4 pt-6 pb-10">{children}</main>

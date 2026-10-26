@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { OctagonPauseIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { DevNote } from "@/components/dev-note";
@@ -21,25 +21,27 @@ import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { money } from "@/lib/format";
-import { PHASE_TEXT, useSign } from "@/lib/use-sign";
+import { useI18n } from "@/lib/i18n/client";
+import { useSign } from "@/lib/use-sign";
 
-const schema = z.object({
-  reason: z.string().trim().min(10, "Explain the reason in at least 10 characters.").max(1000, "Keep it under 1,000 characters."),
-});
+const schemaFor = (t: { reasonMin: string; reasonMax: string }) =>
+  z.object({ reason: z.string().trim().min(10, t.reasonMin).max(1000, t.reasonMax) });
 
 // Stop release: before signing, show what the good-faith deposit costs and the rule for getting it back.
 export function StopDialog({ bond }: { bond: bigint }) {
+  const { t, f } = useI18n();
+  const s = t.landlord.stop;
+  const schema = useMemo(() => schemaFor(s), [s]);
   const [open, setOpen] = useState(false);
   const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { reason: "" } });
-  const { phase, run, busy } = useSign({ success: "Release stopped. The staff will assign an expert." });
+  const { phase, run, busy, phaseText } = useSign({ success: s.success });
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogTrigger asChild>
         <Button variant="destructive" disabled={busy || phase === "done"} aria-busy={busy}>
           {busy && <Spinner data-icon="inline-start" aria-hidden />}
-          {busy ? PHASE_TEXT[phase as "signing" | "sending"] : phase === "done" ? "Release stopped" : "Stop release"}
+          {busy ? phaseText : phase === "done" ? s.done : s.trigger}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
@@ -55,10 +57,9 @@ export function StopDialog({ bond }: { bond: bigint }) {
               <AlertDialogMedia className="bg-destructive/10 text-destructive">
                 <OctagonPauseIcon aria-hidden />
               </AlertDialogMedia>
-              <AlertDialogTitle>Stop the release?</AlertDialogTitle>
+              <AlertDialogTitle>{s.title}</AlertDialogTitle>
               <AlertDialogDescription>
-                Stopping costs a good-faith deposit of <strong className="text-foreground">{money(bond)}</strong>. If the
-                expert agrees with you, you get it back. If not, it goes to pay the expert.
+                {s.cost} <strong className="text-foreground">{f.money(bond)}</strong>. {s.rule}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <FormField
@@ -66,20 +67,20 @@ export function StopDialog({ bond }: { bond: bigint }) {
               name="reason"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Why are you stopping the release?</FormLabel>
+                  <FormLabel>{s.reason}</FormLabel>
                   <FormControl>
-                    <Textarea rows={4} placeholder="For example: damage to the desk and the window" {...field} />
+                    <Textarea rows={4} placeholder={s.placeholder} {...field} />
                   </FormControl>
-                  <FormDescription>Only a private fingerprint of your reason is recorded.</FormDescription>
+                  <FormDescription>{s.hint}</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
             <DevNote>reason_hash = sha256(salt ‖ reason) (DAT-2); the text and the salt stay off-chain.</DevNote>
             <AlertDialogFooter>
-              <AlertDialogCancel type="button">Keep the release</AlertDialogCancel>
+              <AlertDialogCancel type="button">{s.keep}</AlertDialogCancel>
               <Button type="submit" variant="destructive">
-                Pay {money(bond)} and stop
+                {s.confirm(f.money(bond))}
               </Button>
             </AlertDialogFooter>
           </form>

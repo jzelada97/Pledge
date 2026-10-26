@@ -1,8 +1,8 @@
-import { ShieldCheckIcon } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Logo } from "@/components/logo";
+import { PreferencesMenu } from "@/components/preferences-menu";
 
-export function SiteHeader({ nav }: { nav?: ReactNode }) {
+export function SiteHeader() {
   return (
     <header
       data-glass
@@ -13,28 +13,10 @@ export function SiteHeader({ nav }: { nav?: ReactNode }) {
           href="/"
           className="flex min-h-11 items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
         >
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <ShieldCheckIcon className="size-4" aria-hidden />
-          </span>
-          Fianzas
+          <Logo />
         </Link>
-        {nav && (
-          <nav aria-label="Main" className="flex items-center gap-1">
-            {nav}
-          </nav>
-        )}
+        <PreferencesMenu />
       </div>
     </header>
-  );
-}
-
-export function NavLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="rounded-full px-4 py-3 text-sm font-medium text-foreground hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-    >
-      {children}
-    </Link>
   );
 }

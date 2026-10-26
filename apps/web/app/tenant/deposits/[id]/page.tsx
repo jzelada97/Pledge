@@ -9,7 +9,7 @@ import { TenantShell } from "@/components/tenant-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { ME_TENANT, depositById } from "@/lib/fixtures";
-import { date, money } from "@/lib/format";
+import { getI18n } from "@/lib/i18n/server";
 import { tenantView } from "@/lib/tenant-deposit";
 import { yieldGoesTo } from "@/lib/yield-policy";
 
@@ -22,60 +22,55 @@ export default async function TenantDeposit({ params }: PageProps<"/tenant/depos
   const d = depositById(id);
   if (!d || d.data.tenant !== ME_TENANT) notFound();
 
+  const i18n = await getI18n();
+  const { t, f } = i18n;
+  const x = t.tenant;
   const { terms, settlement } = d.data;
-  const v = tenantView(d);
+  const v = tenantView(d, i18n);
   const hasActions = (v.live && (v.canClaim || !v.iApproved)) || d.status === "Settled";
 
   return (
-    <TenantShell back={{ href: "/tenant", label: "Deposits" }}>
-      <h1 className="sr-only">Deposit #{id}</h1>
+    <TenantShell back={{ href: "/tenant", label: t.common.deposits }}>
+      <h1 className="sr-only">{t.common.deposit(id)}</h1>
       <DepositPass {...v.pass} />
 
       {v.live && v.iApproved && (
         <p className="flex items-center gap-2 text-sm font-medium">
           <CircleCheckIcon className="size-5 text-success" aria-hidden />
-          You approved. Waiting for your landlord.
+          {x.youApproved}
         </p>
       )}
       {v.stopped && (
         <Alert>
           <OctagonPauseIcon aria-hidden />
-          <AlertTitle>Your landlord stopped the release</AlertTitle>
-          <AlertDescription>
-            An independent expert is reviewing it. If the staff doesn&apos;t decide by {date(d.review_deadline)}, you get your
-            deposit back in full.
-          </AlertDescription>
+          <AlertTitle>{x.stoppedTitle}</AlertTitle>
+          <AlertDescription>{x.stoppedBody(f.date(d.review_deadline))}</AlertDescription>
         </Alert>
       )}
 
-      <Group
-        title="Details"
-        footer={v.live && !v.canClaim ? `If your landlord doesn't respond, you can claim 100 % from ${date(d.timeout_at)}.` : undefined}
-      >
+      <Group title={x.details} footer={v.live && !v.canClaim ? x.claimFootnote(f.date(d.timeout_at)) : undefined}>
         <DetailList>
-          <DetailRow label="Your deposit" value={money(terms.amount)} strong />
+          <DetailRow label={x.yourDeposit} value={f.money(terms.amount)} strong />
           {terms.tenant_yield_bps > 0 ? (
-            <DetailRow label={settlement ? "Your yield" : "Your yield so far (variable)"} value={money(v.b.tenantYield)} />
+            <DetailRow label={settlement ? x.yourYield : x.yourYieldSoFar} value={f.money(v.b.tenantYield)} />
           ) : (
-            <DetailRow label="The yield goes to" value={yieldGoesTo(terms.tenant_yield_bps, "tenant")} />
+            <DetailRow label={x.yieldGoesTo} value={yieldGoesTo(t, f, terms.tenant_yield_bps, "tenant")} />
           )}
-          <DetailRow label="Contract ends" value={date(terms.end_ts)} />
-          {settlement && <DetailRow label="You received" value={money(v.s.to_tenant)} strong />}
+          <DetailRow label={x.contractEnds} value={f.date(terms.end_ts)} />
+          {settlement && <DetailRow label={x.youReceived} value={f.money(v.s.to_tenant)} strong />}
         </DetailList>
       </Group>
 
-      {terms.strategy.simulated && (
-        <Badge className="w-fit bg-warning/10 text-warning">Simulated yield</Badge>
-      )}
+      {terms.strategy.simulated && <Badge className="w-fit bg-warning/10 text-warning">{t.common.simulatedYield}</Badge>}
 
       {hasActions && (
         <BottomBar>
-          {v.live && v.canClaim && <SignButton size="lg" variant="outline" label="Claim my deposit" success="Deposit claimed. It's on its way." />}
-          {v.live && !v.iApproved && <SignButton size="lg" label="Approve release" success="Release approved" />}
+          {v.live && v.canClaim && <SignButton size="lg" variant="outline" label={x.claim} success={x.claimed} />}
+          {v.live && !v.iApproved && <SignButton size="lg" label={x.approve} success={x.approved} />}
           {d.status === "Settled" && (
             <>
-              <SignButton size="lg" label="Send to my bank" success="Sent to your bank" fail />
-              <Badge className="mx-auto w-fit bg-warning/10 text-warning">Simulated bank transfer</Badge>
+              <SignButton size="lg" label={x.sendToBank} success={x.sent} fail />
+              <Badge className="mx-auto w-fit bg-warning/10 text-warning">{t.common.simulatedBank}</Badge>
             </>
           )}
         </BottomBar>

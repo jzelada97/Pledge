@@ -3,8 +3,10 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { getI18n } from "@/lib/i18n/server";
 
-export default function NotFound() {
+export default async function NotFound() {
+  const { t } = await getI18n();
   return (
     <>
       <SiteHeader />
@@ -14,12 +16,12 @@ export default function NotFound() {
             <EmptyMedia variant="icon">
               <SearchXIcon aria-hidden />
             </EmptyMedia>
-            <EmptyTitle>Page not found</EmptyTitle>
-            <EmptyDescription>The link may be wrong or the page has moved.</EmptyDescription>
+            <EmptyTitle>{t.errors.notFoundTitle}</EmptyTitle>
+            <EmptyDescription>{t.errors.notFoundBody}</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Button asChild>
-              <Link href="/">Go to the home page</Link>
+              <Link href="/">{t.errors.home}</Link>
             </Button>
           </EmptyContent>
         </Empty>

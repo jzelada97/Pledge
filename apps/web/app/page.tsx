@@ -2,10 +2,11 @@ import { ChevronRightIcon, LandmarkIcon, ScaleIcon, ScanFaceIcon, ShieldCheckIco
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { DepositPass } from "@/components/deposit-pass";
-import { NavLink, SiteHeader } from "@/components/site-header";
+import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { CONFIG } from "@/lib/fixtures";
-import { DAY } from "@/lib/format";
+import { DAY, nowSecs, toUnits } from "@/lib/format";
+import { getI18n } from "@/lib/i18n/server";
 import { cn } from "@/lib/utils";
 
 const timeoutDays = Number(CONFIG.timeout_secs / DAY);
@@ -13,30 +14,22 @@ const reviewDays = Number(CONFIG.review_timeout_secs / DAY);
 
 // apple.com-style product page: centred headline and two pill actions, the product (a deposit pass) as the
 // hero image, a bento grid of facts, then one panel per side of the deposit.
-export default function Home() {
+export default async function Home() {
+  const { t, f } = await getI18n();
+  const h = t.home;
   return (
     <>
-      <SiteHeader
-        nav={
-          <>
-            <NavLink href="/landlord">Landlords</NavLink>
-            <NavLink href="/tenant">Tenants</NavLink>
-          </>
-        }
-      />
+      <SiteHeader />
       <main className="overflow-x-clip">
         <section className="mx-auto flex max-w-5xl flex-col items-center gap-6 px-4 pt-14 text-center sm:pt-20">
-          <h1 className="text-5xl font-semibold tracking-tight text-balance sm:text-7xl">Room deposits that come back in full.</h1>
-          <p className="max-w-2xl text-lg text-muted-foreground sm:text-xl">
-            Fianzas holds your tenant&apos;s deposit until the contract ends. When you both approve, it goes back with one tap
-            from each side.
-          </p>
+          <h1 className="text-5xl font-semibold tracking-tight text-balance sm:text-7xl">{h.title}</h1>
+          <p className="max-w-2xl text-lg text-muted-foreground sm:text-xl">{h.lead}</p>
           <div className="flex flex-wrap justify-center gap-3">
             <Button asChild size="lg">
-              <Link href="/landlord">I&apos;m a landlord</Link>
+              <Link href="/landlord">{h.imLandlord}</Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link href="/tenant">I&apos;m a tenant</Link>
+              <Link href="/tenant">{h.imTenant}</Link>
             </Button>
           </div>
 
@@ -44,66 +37,58 @@ export default function Home() {
           <figure className="relative mt-10 w-full max-w-sm pb-4 sm:mt-14">
             <div aria-hidden className="absolute inset-x-6 top-10 bottom-0 rounded-full bg-primary/20 blur-3xl" />
             <DepositPass
-              id="2"
-              amount="$1,200.00"
-              status="Active"
-              note="Back to you in full"
+              title={t.common.deposit("2")}
+              amount={f.money(toUnits(1200))}
+              statusLabel={t.status.Active}
+              note={h.passNote}
               facts={[
-                { label: "Contract ends", value: "Aug 26, 2027" },
-                { label: "Yield", value: "Variable" },
+                { label: t.tenant.contractEnds, value: f.date(nowSecs() + 300n * DAY) },
+                { label: h.passYield, value: h.passVariable },
               ]}
               className="relative -rotate-3 text-left"
             />
-            <figcaption className="mt-6 text-sm text-muted-foreground">Example deposit, as your tenant sees it</figcaption>
+            <figcaption className="mt-6 text-sm text-muted-foreground">{h.passCaption}</figcaption>
           </figure>
         </section>
 
         <section aria-labelledby="facts-title" className="mx-auto max-w-5xl px-4 py-20">
           <h2 id="facts-title" className="mb-8 text-3xl font-semibold tracking-tight sm:text-4xl">
-            Simple for both of you.
+            {h.factsTitle}
           </h2>
           <ul className="grid gap-4 sm:grid-cols-3">
-            <Tile dark className="sm:col-span-2" icon={ShieldCheckIcon} title="Returned in full.">
-              When the landlord and the tenant both approve, the whole deposit goes back to the tenant. The deposit never pays
-              fees.
+            <Tile dark className="sm:col-span-2" icon={ShieldCheckIcon} title={h.full.title}>
+              {h.full.body}
             </Tile>
-            <Tile icon={SproutIcon} title="Earns while it waits.">
-              The deposit earns a variable yield while it&apos;s held. Only that yield is split, and it can be lower, or zero.
+            <Tile warm icon={SproutIcon} title={h.earns.title}>
+              {h.earns.body}
             </Tile>
-            <Tile icon={ScanFaceIcon} title="Face ID. No app.">
-              Tenants sign in with Face ID and pay no fees. Nothing to install.
+            <Tile icon={ScanFaceIcon} title={h.faceId.title}>
+              {h.faceId.body}
             </Tile>
-            <Tile icon={LandmarkIcon} title="Straight from the bank.">
-              Tenants pay from their bank account and get the money back there.
+            <Tile icon={LandmarkIcon} title={h.bank.title}>
+              {h.bank.body}
             </Tile>
-            <Tile dark icon={ScaleIcon} title="Fair if there's a dispute." stat={`${reviewDays} days`} statLabel="for the staff to decide">
-              Only the landlord can stop a release, and it costs a good-faith deposit. An independent expert reviews it.
+            <Tile dark icon={ScaleIcon} title={h.dispute.title} stat={h.dispute.stat(reviewDays)} statLabel={h.dispute.statLabel}>
+              {h.dispute.body}
             </Tile>
           </ul>
         </section>
 
         <section aria-labelledby="sides-title" className="mx-auto max-w-5xl px-4 pb-24">
           <h2 id="sides-title" className="mb-8 text-3xl font-semibold tracking-tight sm:text-4xl">
-            Two sides. One deposit.
+            {h.sidesTitle}
           </h2>
           <div className="grid gap-4 md:grid-cols-2">
+            <Side title={h.forLandlords.title} body={h.forLandlords.body} href="/landlord" cta={h.forLandlords.cta} />
             <Side
-              title="For landlords"
-              body="Create a deposit, send the invitation link and approve the release when the contract ends. Every deposit and what it needs from you, in one place."
-              href="/landlord"
-              cta="Go to my deposits"
-            />
-            <Side
-              title="For tenants"
-              body={`Pay from your bank and see when your deposit comes back. If your landlord doesn't respond within ${timeoutDays} days after the contract ends, you can claim it.`}
+              title={h.forTenants.title}
+              body={h.forTenants.body(timeoutDays)}
               href="/tenant"
-              cta="See my deposits"
-              extra={{ href: "/i/1", label: "Open an invitation" }}
+              cta={h.forTenants.cta}
+              extra={{ href: "/i/1", label: h.forTenants.invite }}
             />
           </div>
-          <p className="mt-10 text-center text-sm text-muted-foreground">
-            The yield is variable and never guaranteed. No option is free of risk.
-          </p>
+          <p className="mt-10 text-center text-sm text-muted-foreground">{h.disclaimer}</p>
         </section>
       </main>
     </>
@@ -115,6 +100,7 @@ function Tile(props: {
   title: string;
   children: ReactNode;
   dark?: boolean;
+  warm?: boolean; // the apricot accent tile
   stat?: string;
   statLabel?: string;
   className?: string;
@@ -124,11 +110,11 @@ function Tile(props: {
     <li
       className={cn(
         "flex min-h-56 flex-col justify-between gap-6 rounded-3xl p-7",
-        props.dark ? "bg-accent text-accent-foreground" : "bg-card ring-1 ring-foreground/8",
+        props.dark ? "bg-accent text-accent-foreground" : props.warm ? "bg-highlight-soft ring-1 ring-highlight/50" : "bg-card ring-1 ring-foreground/8",
         props.className,
       )}
     >
-      <Icon className={cn("size-8", !props.dark && "text-primary")} aria-hidden />
+      <Icon className={cn("size-8", props.warm ? "text-highlight-text" : !props.dark && "text-primary")} aria-hidden />
       <div className="space-y-2">
         {props.stat && (
           <p className="pb-2">
@@ -136,7 +122,7 @@ function Tile(props: {
             <span className="block font-medium">{props.statLabel}</span>
           </p>
         )}
-        <h3 className="text-2xl font-semibold tracking-tight">{props.title}</h3>
+        <h3 className="text-2xl font-semibold tracking-tight text-balance">{props.title}</h3>
         <p className={props.dark ? "text-accent-foreground/85" : "text-muted-foreground"}>{props.children}</p>
       </div>
     </li>

@@ -10,12 +10,15 @@ import { SignButton } from "@/components/sign-button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/lib/i18n/client";
 
 type Step = "review" | 0 | 1 | 2 | "paid";
 
 // iOS onboarding style: first the terms (server-rendered, passed as `review`), then one full screen per step
 // (sign in or create account → add money from the bank → accept and pay), each with its action at the bottom.
 export function InvitationFlow(props: { amount: string; termsMatch: boolean; simulatedRamp: boolean; review: ReactNode }) {
+  const { t } = useI18n();
+  const x = t.invitation;
   const [step, setStep] = useState<Step>("review");
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -28,7 +31,7 @@ export function InvitationFlow(props: { amount: string; termsMatch: boolean; sim
         {props.review}
         <BottomBar>
           <Button size="lg" onClick={() => setStep(0)}>
-            Continue to pay
+            {x.continue}
           </Button>
         </BottomBar>
       </>
@@ -37,10 +40,10 @@ export function InvitationFlow(props: { amount: string; termsMatch: boolean; sim
 
   if (step === "paid") {
     return (
-      <Screen ref={heading} icon={CircleCheckIcon} iconClass="bg-success/10 text-success" title="Your deposit is paid" description="You'll get it back in full when you and your landlord approve the release.">
+      <Screen ref={heading} icon={CircleCheckIcon} iconClass="bg-success/10 text-success" title={x.paid.title} description={x.paid.body}>
         <BottomBar>
           <Button asChild size="lg">
-            <Link href="/tenant">See my deposit</Link>
+            <Link href="/tenant">{x.paid.cta}</Link>
           </Button>
         </BottomBar>
       </Screen>
@@ -49,49 +52,46 @@ export function InvitationFlow(props: { amount: string; termsMatch: boolean; sim
 
   return (
     <>
-      <ol aria-label="Steps to pay your deposit" className="flex justify-center gap-2">
+      <ol aria-label={x.steps} className="flex justify-center gap-2">
         {[0, 1, 2].map((i) => (
           <li key={i} aria-current={i === step ? "step" : undefined} className={i <= step ? "h-1.5 w-8 rounded-full bg-primary" : "h-1.5 w-8 rounded-full bg-foreground/15"}>
-            <span className="sr-only">
-              Step {i + 1}
-              {i < step ? ", done" : ""}
-            </span>
+            <span className="sr-only">{x.stepSr(i + 1, i < step)}</span>
           </li>
         ))}
       </ol>
 
       {step === 0 && (
-        <Screen ref={heading} n={1} icon={ScanFaceIcon} title="Sign in or create your account" description="Already have an account? Face ID signs you in. New here? We create one for you.">
-          <p className="text-center text-sm text-muted-foreground">No app to install, no fees for you.</p>
+        <Screen ref={heading} n={1} stepLabel={x.stepOf(1)} icon={ScanFaceIcon} title={x.signIn.title} description={x.signIn.body}>
+          <p className="text-center text-sm text-muted-foreground">{x.signIn.note}</p>
           <DevNote>wallet.connect() first (silent reconnect); if it returns null, wallet.createAccount().</DevNote>
           <BottomBar>
-            <SignButton size="lg" label="Continue with Face ID" success="You're signed in" onDone={() => setStep(1)} />
+            <SignButton size="lg" label={x.signIn.button} success={x.signIn.success} onDone={() => setStep(1)} />
           </BottomBar>
         </Screen>
       )}
 
       {step === 1 && (
-        <Screen ref={heading} n={2} icon={LandmarkIcon} title="Add the money from your bank" description={`Transfer ${props.amount} from your bank account.`}>
-          {props.simulatedRamp && <Badge className="mx-auto bg-warning/10 text-warning">Simulated bank transfer</Badge>}
+        <Screen ref={heading} n={2} stepLabel={x.stepOf(2)} icon={LandmarkIcon} title={x.addMoney.title} description={x.addMoney.body(props.amount)}>
+          {props.simulatedRamp && <Badge className="mx-auto bg-warning/10 text-warning">{t.common.simulatedBank}</Badge>}
           <BottomBar>
-            <SignButton size="lg" label={`Add ${props.amount} from my bank`} success="Money added" onDone={() => setStep(2)} />
+            <SignButton size="lg" label={x.addMoney.button(props.amount)} success={x.addMoney.success} onDone={() => setStep(2)} />
           </BottomBar>
         </Screen>
       )}
 
       {step === 2 && (
-        <Screen ref={heading} n={3} icon={ShieldCheckIcon} title="Accept and pay the deposit" description="Your deposit is held until the contract ends.">
+        <Screen ref={heading} n={3} stepLabel={x.stepOf(3)} icon={ShieldCheckIcon} title={x.pay.title} description={x.pay.body}>
           {!props.termsMatch && (
             <Alert variant="destructive">
               <OctagonXIcon aria-hidden />
-              <AlertTitle>These terms don&apos;t match the platform&apos;s</AlertTitle>
-              <AlertDescription>For your safety we can&apos;t accept this deposit. Ask your landlord for a new invitation.</AlertDescription>
+              <AlertTitle>{x.pay.mismatchTitle}</AlertTitle>
+              <AlertDescription>{x.pay.mismatchBody}</AlertDescription>
             </Alert>
           )}
           <DevNote>Before asking for Face ID, the terms are checked against deployments/testnet.json (WEB-14).</DevNote>
           {props.termsMatch && (
             <BottomBar>
-              <SignButton size="lg" label="Accept and pay" success="Deposit paid" onDone={() => setStep("paid")} />
+              <SignButton size="lg" label={x.pay.button} success={x.pay.success} onDone={() => setStep("paid")} />
             </BottomBar>
           )}
         </Screen>
@@ -103,6 +103,7 @@ export function InvitationFlow(props: { amount: string; termsMatch: boolean; sim
 function Screen(props: {
   ref: React.Ref<HTMLHeadingElement>;
   n?: number;
+  stepLabel?: string;
   icon: LucideIcon;
   iconClass?: string;
   title: string;
@@ -116,7 +117,7 @@ function Screen(props: {
         <span className={`mx-auto flex size-20 items-center justify-center rounded-3xl ${props.iconClass ?? "bg-primary text-primary-foreground"}`}>
           <Icon className="size-10" strokeWidth={1.5} aria-hidden />
         </span>
-        {props.n && <p className="text-sm font-medium text-muted-foreground">Step {props.n} of 3</p>}
+        {props.n && <p className="text-sm font-medium text-muted-foreground">{props.stepLabel}</p>}
         <h2 ref={props.ref} tabIndex={-1} className="text-3xl font-semibold tracking-tight text-balance outline-none">
           {props.title}
         </h2>
