@@ -4,8 +4,6 @@
 
 Built for **HackMeridian 2026 · Genesis track** · runs on **Stellar testnet**.
 
-🎬 Demo: _coming soon_ · 📹 Video: _coming soon_
-
 ---
 
 ## 1. Problem
@@ -210,10 +208,6 @@ This is a hackathon MVP focused on the happy path, on **testnet only**.
 - Jurisdiction-aware refunds on the normal path, the claim button in the web app, and an on-chain claim deadline in the escrow so the guarantee no longer depends on Pledge.
 - Portfolio dashboard and bulk operations for large landlords.
 - External security audit.
-
-## Screenshots
-
-_Coming soon._
 
 ## Team
 
