@@ -169,6 +169,23 @@ describe("parar y resolver", () => {
     expect(code(() => buildWithdrawYieldBody(stopped, STAFF, 1n, 0))).toBe("NOT_SETTLED");
     expect(code(() => buildWithdrawYieldBody(resolved, STAFF, 0n, 0))).toBe("INVALID_AMOUNT");
   });
+
+  it("la comisión de plataforma sobre el rendimiento es opcional y sale antes de la jurisdicción", () => {
+    const resolved = escrowFixture({ flags: { disputed: true, released: false, resolved: true } });
+    // Sin comisión (por defecto) la tesorería no aparece.
+    expect(buildWithdrawYieldBody(resolved, STAFF, 1000n, 0).distributions).toEqual([{ address: LANDLORD, amount: 0.0001 }]);
+    // 20 % a la tesorería y, del resto, la mitad al inquilino.
+    expect(buildWithdrawYieldBody(resolved, STAFF, 1000n, 5000, 2000).distributions).toEqual([
+      { address: TREASURY, amount: 0.00002 },
+      { address: TENANT, amount: 0.00004 },
+      { address: LANDLORD, amount: 0.00004 },
+    ]);
+    // Con todo el sobrante para la tesorería no quedan distribuciones vacías.
+    expect(buildWithdrawYieldBody(resolved, STAFF, 1000n, 5000, 10_000).distributions).toEqual([{ address: TREASURY, amount: 0.0001 }]);
+    expect(() => buildWithdrawYieldBody(resolved, STAFF, 1n, 0, 10_001)).toThrow(RangeError);
+    // Los controles de #72 siguen valiendo con comisión.
+    expect(code(() => buildWithdrawYieldBody(stopped, STAFF, 1000n, 0, 2000))).toBe("NOT_SETTLED");
+  });
 });
 
 describe("isContractAddress", () => {
@@ -179,5 +196,7 @@ describe("isContractAddress", () => {
     expect(isContractAddress("C")).toBe(false);
     expect(isContractAddress(`${TENANT}B`)).toBe(false);
     expect(isContractAddress(TENANT.toLowerCase())).toBe(false);
+    expect(isContractAddress("CALLE MAYOR 1")).toBe(false);
+    expect(isContractAddress(TENANT.slice(0, 55) + "1")).toBe(false); // 1 no es base32
   });
 });

@@ -201,38 +201,51 @@ export function buildResolveBody(escrow: Escrow, resolver: string, deduction: bi
   };
 }
 
+function checkBps(name: string, bps: number): void {
+  if (!Number.isInteger(bps) || bps < 0 || bps > 10_000) {
+    throw new RangeError(`${name} fuera de rango (0–10000): ${bps}`);
+  }
+}
+
 /**
- * Reparto del rendimiento que queda en el escrow tras resolver (`withdraw-remaining-funds`), según la
- * política de la jurisdicción: `tenantYieldBps` para el inquilino y el resto para el casero.
- * `remaining` sale de `getBalances` (ya no está en el vault, así que es exacto).
+ * Reparto del rendimiento que queda en el escrow una vez liquidada la fianza (`withdraw-remaining-funds`):
+ * 1. `platformFeeBps` para la tesorería (`platformAddress`). Opcional y 0 por defecto: si la plataforma
+ *    cobra en el plan A es una decisión de producto pendiente (ver "Huecos" en CLAUDE.md).
+ * 2. Del resto, `tenantYieldBps` para el inquilino según la jurisdicción y lo demás para el casero.
+ * `remaining` sale de `getBalances` (ya no está en el vault, así que es exacto). Los redondeos van
+ * al casero.
  */
 export function buildWithdrawYieldBody(
   escrow: Escrow,
   resolver: string,
   remaining: bigint,
   tenantYieldBps: number,
+  platformFeeBps = 0,
 ): DistributionsBody {
   if (resolver !== escrow.roles.disputeResolver) throw new FianzaError("NOT_RESOLVER", "Solo el staff puede repartir");
   if (fianzaStatus(escrow) !== "Settled") {
     throw new FianzaError("NOT_SETTLED", "Solo se reparte el sobrante de una fianza resuelta o liberada");
   }
-  if (!Number.isInteger(tenantYieldBps) || tenantYieldBps < 0 || tenantYieldBps > 10_000) {
-    throw new RangeError(`tenantYieldBps fuera de rango (0–10000): ${tenantYieldBps}`);
-  }
+  checkBps("tenantYieldBps", tenantYieldBps);
+  checkBps("platformFeeBps", platformFeeBps);
   // Sin sobrante, las distribuciones quedarían vacías y la API las rechaza.
   if (remaining <= 0n) throw new FianzaError("INVALID_AMOUNT", "No hay sobrante que repartir");
-  const toTenant = (remaining * BigInt(tenantYieldBps)) / BPS;
+  const toTreasury = (remaining * BigInt(platformFeeBps)) / BPS;
+  const net = remaining - toTreasury;
+  const toTenant = (net * BigInt(tenantYieldBps)) / BPS;
   return {
     contractId: escrow.contractId,
     disputeResolver: resolver,
     distributions: distributions([
+      [escrow.roles.platformAddress, toTreasury],
       [escrow.roles.receiver, toTenant],
-      [escrow.roles.serviceProvider, remaining - toTenant],
+      [escrow.roles.serviceProvider, net - toTenant],
     ]),
   };
 }
 
-// StrKey de contrato: `C` + 55 caracteres base32 (comprueba el formato, no el checksum).
+// Formato de una dirección de contrato (StrKey): "C" + 55 caracteres en base32. No comprueba el
+// checksum (para eso haría falta el SDK de Stellar); basta para no confundir una C-address con otra cosa.
 const CONTRACT_ADDRESS_RE = /^C[A-Z2-7]{55}$/;
 
 /** true si la dirección es una cuenta inteligente (passkey): la API de TW no la acepta como firmante. */
