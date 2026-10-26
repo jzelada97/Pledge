@@ -26,6 +26,18 @@ export function fromDecimal(value: number | string): bigint {
   return BigInt(whole) * SCALE + BigInt(fraction.padEnd(DECIMALS, "0"));
 }
 
+/**
+ * Saldo que devuelve la API → unidad mínima, **truncando** lo que pase de 7 decimales (un `number`
+ * puede traer restos de coma flotante). Truncar garantiza no repartir nunca más de lo que hay.
+ */
+export function floorToUnits(value: number | string): bigint {
+  const text = typeof value === "number" ? numberToPlain(value) : value.trim();
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!match) throw new RangeError(`Importe no válido: ${value}`);
+  const [, whole, fraction = ""] = match;
+  return fromDecimal(fraction ? `${whole}.${fraction.slice(0, DECIMALS)}` : whole);
+}
+
 function numberToPlain(value: number): string {
   if (!Number.isFinite(value)) throw new RangeError(`Importe no válido: ${value}`);
   // toString da la representación decimal más corta que vuelve al mismo número; con

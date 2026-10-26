@@ -15,7 +15,7 @@ import type {
   Escrow,
   ReleaseFundsBody,
 } from "./types";
-import { fromDecimal, toDecimal } from "./units";
+import { floorToUnits, fromDecimal, toDecimal } from "./units";
 
 /** El único hito: la devolución de la fianza. */
 export const RELEASE_MILESTONE = "0";
@@ -160,19 +160,25 @@ function distributions(parts: [string, bigint][]): Distribution[] {
  * "Resolver": se reparte el importe **fondeado** (lo recomienda TW, porque el saldo crece mientras se
  * construye la transacción). La deducción va al casero y el resto al inquilino. El rendimiento queda
  * en el escrow y se reparte con `buildWithdrawYieldBody`.
+ *
+ * Si el vault ha perdido valor, el saldo es menor que lo fondeado: repartir lo fondeado haría fallar
+ * la resolución en cadena (las distribuciones no pueden superar el saldo) y la fianza quedaría
+ * bloqueada. En ese caso se reparte el saldo disponible y la pérdida la absorbe el inquilino.
  */
 export function buildResolveBody(escrow: Escrow, resolver: string, deduction: bigint): DistributionsBody {
   if (resolver !== escrow.roles.disputeResolver) throw new FianzaError("NOT_RESOLVER", "Solo el staff puede resolver");
   if (fianzaStatus(escrow) !== "Stopped") throw new FianzaError("NOT_DISPUTED", "Solo se resuelve una fianza parada");
   const funded = fromDecimal(escrow.amount);
-  if (deduction < 0n || deduction > funded) {
-    throw new FianzaError("INVALID_AMOUNT", "La deducción debe estar entre 0 y la fianza");
+  const available = floorToUnits(escrow.balance);
+  const base = available < funded ? available : funded;
+  if (deduction < 0n || deduction > base) {
+    throw new FianzaError("INVALID_AMOUNT", "La deducción debe estar entre 0 y lo que queda de la fianza");
   }
   return {
     contractId: escrow.contractId,
     disputeResolver: resolver,
     distributions: distributions([
-      [escrow.roles.receiver, funded - deduction],
+      [escrow.roles.receiver, base - deduction],
       [escrow.roles.serviceProvider, deduction],
     ]),
   };
