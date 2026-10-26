@@ -1,3 +1,5 @@
+**Live demo → https://pledge.zelada.es** (Stellar testnet; sign in with a passkey, no crypto needed)
+
 # Pledge · rental deposits that earn yield on Stellar
 
 **Pledge turns a room-rental deposit into its own escrow smart contract on Stellar.** While the lease lasts, the deposit earns variable yield in a DeFindex vault. When the lease ends, it goes back to the tenant once the landlord approves. Tenants never touch crypto: they sign in with a passkey, pay no network fees and fund the deposit from their bank.
