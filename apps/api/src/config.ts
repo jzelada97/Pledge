@@ -121,7 +121,7 @@ export function loadConfigFromEnv(env: NodeJS.ProcessEnv = process.env, dep: Dep
     trustless: env.TW_API_KEY
       ? {
           apiKey: env.TW_API_KEY,
-          baseUrl: env.TW_API_URL,
+          baseUrl: env.TW_API_URL || undefined, // "" en .env.local = por defecto
           treasurySecret: env.TREASURY_SECRET ?? null,
           platformFeeBps: Number(env.TW_PLATFORM_FEE_BPS ?? 0),
           staffSecret: env.STAFF_SECRET ?? null,

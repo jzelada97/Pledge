@@ -1,15 +1,26 @@
 // Wallet real: cuenta inteligente con passkey (smart-account-kit) y fees patrocinados por el Relayer.
 // El kit envía { func, auth } a cfg.relayPath, que es nuestro createRelayHandler (./server) montado en apps/api.
 import { IndexedDBStorage, SmartAccountErrorCode, SmartAccountKit } from "smart-account-kit";
-import { rpc, type contract } from "@stellar/stellar-sdk";
+import { rpc, xdr, type contract } from "@stellar/stellar-sdk";
 import { verifyAuthTree } from "./auth-check";
 import { SIGNATURE_LEDGERS, sendBuilt } from "./built";
 import { WalletError, type WalletErrorCode } from "./errors";
 import type { SignAndSendOptions, SignBuiltOptions, UnsignedTransactionResponse, Wallet, WalletConfig } from "./types";
 
 // El kit exige saber con qué regla de la cuenta se firma ("contextRuleIds are required…", #82). Nuestras
-// cuentas se crean con una sola regla, la 0 (lo confirma el indexador: `context_rule_ids: [0]`).
-const CONTEXT_RULE_IDS = [0];
+// cuentas se crean con una sola regla, la 0 (lo confirma el indexador: `context_rule_ids: [0]`), pero la
+// cuenta recibe un contexto por cada invocación del árbol de auth (la raíz y sus subinvocaciones: en
+// `fund_escrow` también el `token.transfer` anidado) y exige un id por contexto, si no falla con
+// `ContextRuleIdsLengthMismatch` (#3014, el SIMULATION_FAILED de #124).
+const CONTEXT_RULE_ID = 0;
+
+function countInvocations(inv: xdr.SorobanAuthorizedInvocation): number {
+  return 1 + inv.subInvocations().reduce((n, sub) => n + countInvocations(sub), 0);
+}
+
+export function contextRuleIdsFor(entry: xdr.SorobanAuthorizationEntry): number[] {
+  return Array.from({ length: countInvocations(entry.rootInvocation()) }, () => CONTEXT_RULE_ID);
+}
 
 function contractCodeOf(message: string): number | undefined {
   const m = /Error\(Contract, #(\d+)\)/.exec(message);
@@ -85,7 +96,7 @@ export function createWallet(cfg: WalletConfig): Wallet {
         const { sequence } = await server.getLatestLedger();
         // El kit firma y envía en el mismo paso: no hay una fase "submitting" aparte que mostrar.
         opts.onPhase?.("signing");
-        const res = await kit.signAndSubmit(tx, { expiration: sequence + SIGNATURE_LEDGERS, resolveContextRuleIds: () => CONTEXT_RULE_IDS });
+        const res = await kit.signAndSubmit(tx, { expiration: sequence + SIGNATURE_LEDGERS, resolveContextRuleIds: (entry) => contextRuleIdsFor(entry) });
         if (!res.success) throw res.error;
         return { hash: res.hash };
       } catch (e) {
@@ -94,6 +105,8 @@ export function createWallet(cfg: WalletConfig): Wallet {
     },
 
     async signAndSendBuilt(res: UnsignedTransactionResponse, opts: SignBuiltOptions = {}) {
+      // Si el módulo se recargó (Fast Refresh) o la pestaña volvió, la sesión sigue en IndexedDB: reconexión silenciosa.
+      if (res.soroban && !address) await this.connect();
       if (res.soroban && !address) throw new WalletError("NOT_CONNECTED");
       try {
         return await sendBuilt(
@@ -102,7 +115,7 @@ export function createWallet(cfg: WalletConfig): Wallet {
             signer: address ?? "",
             cfg,
             latestLedger: async () => (await server.getLatestLedger()).sequence,
-            signAuthEntry: (entry, expiration) => kit.signAuthEntry(entry, { expiration, contextRuleIds: CONTEXT_RULE_IDS }),
+            signAuthEntry: (entry, expiration) => kit.signAuthEntry(entry, { expiration, contextRuleIds: contextRuleIdsFor(entry) }),
             fetch: (input, init) => fetch(input, init),
           },
           opts,
