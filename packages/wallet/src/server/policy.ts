@@ -212,6 +212,6 @@ export async function validateSubmission(body: DecodedSubmission, policy: RelayP
 
   // La simulación filtra llamadas que fallarían (no gastan cupo) y acota el coste.
   const sim = await chain.simulate(func, auth);
-  if (!sim.ok) throw new RelayError("SIMULATION_FAILED", 400);
+  if (!sim.ok) throw new RelayError("SIMULATION_FAILED", 400, sim.error);
   if (sim.minResourceFee > policy.maxResourceFeeStroops) throw new RelayError("FEE_TOO_HIGH", 413);
 }

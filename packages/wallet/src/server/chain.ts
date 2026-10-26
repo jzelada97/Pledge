@@ -10,6 +10,8 @@ const SIMULATION_SOURCE = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 export interface SimulationResult {
   ok: boolean;
   minResourceFee: bigint;
+  // Texto del error de la RPC cuando falla (solo para el log del servidor; al cliente va saneado).
+  error?: string;
 }
 
 export interface ChainLookups {
@@ -61,8 +63,9 @@ export function createChainLookups(rpcUrl: string, networkPassphrase: string): C
 
     async simulate(func, auth) {
       const sim = await server.simulateTransaction(buildTx(Operation.invokeHostFunction({ func, auth })));
+      if (rpc.Api.isSimulationError(sim)) return { ok: false, minResourceFee: 0n, error: sim.error };
       if (!rpc.Api.isSimulationSuccess(sim) || rpc.Api.isSimulationRestore(sim)) {
-        return { ok: false, minResourceFee: 0n };
+        return { ok: false, minResourceFee: 0n, error: "estado archivado: hace falta restaurarlo" };
       }
       return { ok: true, minResourceFee: BigInt(sim.minResourceFee) };
     },

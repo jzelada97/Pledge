@@ -36,7 +36,7 @@ const wasm = new Map<string, string>([
   [escrow, ESCROW_WASM],
   [tenant, ACCOUNT_WASM],
 ]);
-let sim = { ok: true, minResourceFee: 1000n };
+let sim: { ok: boolean; minResourceFee: bigint; error?: string } = { ok: true, minResourceFee: 1000n };
 const chain: ChainLookups = {
   wasmHashOf: async (c) => wasm.get(c) ?? null,
   isRegisteredEscrow: async (f, e) => f === factory && e === escrow,
@@ -164,9 +164,11 @@ describe("createRelayHandler", () => {
   });
 
   it("filtra por simulación y fee, y no filtra detalles del Relayer", async () => {
-    sim = { ok: false, minResourceFee: 0n };
+    sim = { ok: false, minResourceFee: 0n, error: "HostError: Error(Contract, #7) ... detalle largo de la RPC" };
     let res = await handler()(request(fund()));
-    expect([res.status, await codeOf(res)]).toEqual([400, "SIMULATION_FAILED"]);
+    const body = await res.clone().json();
+    expect([res.status, body.code, body.contractError]).toEqual([400, "SIMULATION_FAILED", 7]);
+    expect(JSON.stringify(body)).not.toContain("detalle largo"); // el texto de la RPC se queda en el log
     sim = { ok: true, minResourceFee: 2_000_000n };
     res = await handler()(request(fund()));
     expect([res.status, await codeOf(res)]).toEqual([413, "FEE_TOO_HIGH"]);

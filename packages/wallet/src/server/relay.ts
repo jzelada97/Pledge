@@ -56,8 +56,16 @@ function clientIp(req: Request): string {
 }
 
 // Respuesta con la forma que entiende el RelayerClient del kit, y sin detalles internos (security SRV-8).
-function fail(code: string, status: number): Response {
-  return Response.json({ success: false, error: code, code }, { status });
+function fail(code: string, status: number, extra: Record<string, unknown> = {}): Response {
+  return Response.json({ success: false, error: code, code, ...extra }, { status });
+}
+
+// Una simulación fallida se registra entera en el servidor (es lo único que explica un 400 del relay) y al
+// cliente solo le llega el número de error del contrato, si lo hay (API-12).
+function simulationFailure(e: RelayError): Response {
+  console.error(`[relay] SIMULATION_FAILED: ${e.message}`);
+  const m = /Error\(Contract, #(\d+)\)/.exec(e.message);
+  return fail(e.code, e.status, m ? { contractError: Number(m[1]) } : {});
 }
 
 export function createRelayHandler(cfg: RelayHandlerConfig): (req: Request) => Promise<Response> {
@@ -122,7 +130,7 @@ export function createRelayHandler(cfg: RelayHandlerConfig): (req: Request) => P
       const { transactionId, hash, status } = out.data ?? {};
       return Response.json({ success: true, data: { transactionId, hash, status } });
     } catch (e) {
-      if (e instanceof RelayError) return fail(e.code, e.status);
+      if (e instanceof RelayError) return e.code === "SIMULATION_FAILED" ? simulationFailure(e) : fail(e.code, e.status);
       return fail("RELAYER_DOWN", 503);
     }
   };
