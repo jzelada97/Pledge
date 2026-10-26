@@ -13,6 +13,44 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ---
 
+## 2026-10-26 11:30 · Solo existe el plan A: el plan B queda descartado (lo leen todas las IAs)
+- **Decisión:** el producto (Pledge) es **solo el plan A**. Cada fianza es un escrow single-release con rendimiento de Trustless Work (TrustYield, vault de DeFindex sobre Blend), creado y gestionado con su API desde `apps/api` mediante `@fianzas/trustless`.
+- **El plan B queda descartado para siempre**, no "en reserva". Comprende:
+  - el escrow fork de TW y la `FianzaFactory` (`contracts/`);
+  - `packages/bindings`;
+  - el backend `factory` de `apps/api`;
+  - #48 y #58.
+
+  No se desarrolla, no se despliega, no se revisa y **no se tiene en cuenta en ninguna parte**: ni en código nuevo, ni en la UI, ni en los docs, el README o el pitch.
+- **Conceptos que no existen en el plan A** y no deben aparecer:
+  - perito;
+  - depósito por parar (*stop bond*, "good-faith deposit");
+  - plazos (*timeout*, "el inquilino reclama si el casero no responde", "el staff decide en 30 días");
+  - `stop_justified` con efecto en un bond;
+  - estrategias del registro de la factory.
+- **Así es el plan A**, mapeo en `packages/trustless/CLAUDE.md`:
+  - el casero aprueba y el inquilino libera (fianza + rendimiento − 0,3 % de TW);
+  - solo el casero para, antes de aprobar y gratis;
+  - el staff resuelve: deducción al casero y resto al inquilino;
+  - el rendimiento sobrante se reparte después (`distribute-yield`: comisión de plataforma y `tenantYieldBps`).
+- **Qué queda como histórico (no lo uses de referencia):**
+  - `contracts/`, `packages/bindings`;
+  - las secciones de contratos y factory de `docs/INTERFACES.md`;
+  - `.kiro/pipeline/` y las fases de `docs/PIPELINE.md`;
+  - las entradas de abajo que hablan del plan B "en reserva".
+- **Pendiente:**
+  - la UI aún tiene textos del plan B (perito, depósito de buena fe, reclamación del inquilino, "30 días"): hay que quitarlos;
+  - el backend `factory` de `apps/api` (`FIANZAS_BACKEND=factory`) se puede borrar cuando haya tiempo (P2).
+- **Sustituye a:** la decisión de dejar el plan B en reserva (#60, #67 y la entrada del 2026-10-25 de abajo).
+- **Motivo:** el plan A ya funciona de punta a punta en testnet (#80, #84, #104). Mantener dos planes confunde al equipo, a las IAs y al jurado.
+- Decide: P1 (Carlos), con el equipo · Revisa: P2
+
+## 2026-10-26 11:00 · P4 pasa al pitch; el front queda libre para el equipo
+- **Decisión:** Diego (P4) se dedica al pitch (`pitch/`). `apps/web` y `apps/backoffice` pasan a ser **áreas libres** (`owner: "*"` en `harness/team.json`, como `docs/`): cualquiera las edita sin lock ni `cross-area`. `apps/web/app/api/` sigue siendo del área `api` (P2). El trabajo del front se reparte con issues asignados: conectar las pantallas del plan A con `apps/api` (#84), el flujo de la passkey del inquilino (#82) y el backoffice del staff (resolver y `distribute-yield`, #104).
+- **Estado de lo que deja Diego:** #100 (rediseño "Pledge") **ya está fusionado** (aprobado por P3, CI en verde). #96 (cabeceras de seguridad, cierra #77) sigue abierto y en conflicto con `main`; le falta el indexador de las passkeys en `connect-src` (`deployments.smartAccount.indexerUrl`, #107). Quien coja el front lo hereda: commits a su rama con su permiso, sin reescribir historia. El lock `deps` #98 lo libera él.
+- **Alternativa descartada:** un dueño concreto (P2) para el front, porque obligaría a P1 y P3 a usar `cross-area` en cada PR.
+- Decide: equipo (propuesta de P1 en #105; confirmado por Jose) · Implementa: P2
+
 ## 2026-10-26 10:40 · Modo MVP de la hackatón hasta la entrega (lo leen todas las IAs)
 - **Decisión:** desde ahora y hasta la entrega, el único objetivo es que **el camino feliz funcione en la demo** (testnet, plan A): crear la fianza, depositar con passkey, aprobar y devolver.
   - No se tratan casos raros ni extremos, ni se endurece más allá de lo que ya hay.

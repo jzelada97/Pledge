@@ -9,7 +9,8 @@ import { Problem } from "./problem";
 const NET = deployments.networkPassphrase;
 const FACTORY = deployments.factory!;
 const ESCROW = StrKey.encodeContract(Buffer.alloc(32, 7)); // registrado en la factory
-const TW_ESCROW = StrKey.encodeContract(Buffer.alloc(32, 8)); // escrow de TW, reconocido por su wasm
+const TW_ESCROW = StrKey.encodeContract(Buffer.alloc(32, 8)); // escrow de TW nuestro (platform = tesorería)
+const TW_FOREIGN = StrKey.encodeContract(Buffer.alloc(32, 6)); // escrow de TW de otra plataforma
 const OTHER = StrKey.encodeContract(Buffer.alloc(32, 9));
 const signer = Keypair.random();
 
@@ -32,15 +33,24 @@ function feeBump(): string {
   return bump.toXDR();
 }
 
-function setup(dep = deployments) {
+interface Faults {
+  wasmFailures?: number; // cuántas veces falla wasmHashOf antes de responder
+  idOfNetworkError?: boolean; // id_of falla por red, no porque no esté registrado
+  platformOf?: Record<string, string>; // roles.platform de cada escrow de TW
+}
+
+function setup(dep = deployments, faults: Faults = {}) {
   const sent: string[] = [];
+  let wasmFailures = faults.wasmFailures ?? 0;
   const chain: Chain = {
-    async read(_contractId, fn, args = []) {
+    async read(contractId, fn, args = []) {
       if (fn === "id_of") {
+        if (faults.idOfNetworkError) throw new Error("ECONNRESET");
         const { scValToNative } = await import("@stellar/stellar-sdk");
         if (scValToNative(args[0]) === ESCROW) return 1n as never;
         throw new Problem(502, "STELLAR_SIMULATION_FAILED", "La simulación falló", "Error(Contract, #1)", { contractError: 1 });
       }
+      if (fn === "get_escrow") return { roles: { platform: faults.platformOf?.[contractId] ?? deployments.treasury } } as never;
       throw new Error(`lectura inesperada ${fn}`);
     },
     async readRaw() {
@@ -57,7 +67,11 @@ function setup(dep = deployments) {
       return 1000;
     },
     async wasmHashOf(contractId) {
-      return contractId === TW_ESCROW ? TW_ESCROW_WASM_TESTNET : null;
+      if (wasmFailures > 0) {
+        wasmFailures -= 1;
+        throw new Error("RPC caído");
+      }
+      return contractId === TW_ESCROW || contractId === TW_FOREIGN ? TW_ESCROW_WASM_TESTNET : null;
     },
   };
   const app = createApp(loadConfigFromEnv({}, dep), { chain, now: () => 0 });
@@ -87,6 +101,34 @@ describe("POST /stellar/send-transaction solo reenvía transacciones de la plata
       expect([res.status, (await json(res)).code]).toEqual([403, "FZ_TX_NOT_ALLOWED"]);
     }
     expect(sent).toHaveLength(0);
+  });
+
+  it("un fallo del RPC responde 503 y no se cachea como 'no permitido' (#91)", async () => {
+    const { send, sent } = setup(deployments, { wasmFailures: 1 });
+    const first = await send(invoke(TW_ESCROW).toXDR());
+    const body = await json(first);
+    expect([first.status, body.code]).toEqual([503, "FZ_RPC_UNAVAILABLE"]);
+    expect(JSON.stringify(body)).not.toContain("RPC caído"); // el detalle interno va al log
+    const second = await send(invoke(TW_ESCROW).toXDR());
+    expect(second.status).toBe(200);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("un error de red al consultar la factory es 503, no 403 (#91)", async () => {
+    const { send } = setup(deployments, { idOfNetworkError: true });
+    const res = await send(invoke(ESCROW).toXDR());
+    expect([res.status, (await json(res)).code]).toEqual([503, "FZ_RPC_UNAVAILABLE"]);
+  });
+
+  it("solo pasan los escrows de TW de esta plataforma: platform = tesorería (#91)", async () => {
+    const { send, sent } = setup(deployments, { platformOf: { [TW_FOREIGN]: Keypair.random().publicKey() } });
+    const foreign = await send(invoke(TW_FOREIGN).toXDR());
+    expect([foreign.status, (await json(foreign)).code]).toEqual([403, "FZ_TX_NOT_ALLOWED"]);
+    expect((await send(invoke(TW_ESCROW).toXDR())).status).toBe(200);
+    expect(sent).toHaveLength(1);
+    // Un 403 tampoco se recuerda: si el escrow pasa a ser nuestro (otra lectura), entra.
+    const { send: send2 } = setup(deployments, { platformOf: { [TW_FOREIGN]: deployments.treasury } });
+    expect((await send2(invoke(TW_FOREIGN).toXDR())).status).toBe(200);
   });
 
   it("sin factory desplegada (plan A), solo pasan los escrows de TW", async () => {

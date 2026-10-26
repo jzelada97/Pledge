@@ -81,7 +81,8 @@
     "webauthnVerifier": "CC7EKIHQP3TN4CARQDND6CEOY2UXLWWC2X5GHTD5NLAT7BG5GPZIOM3F",
     "deployers": [
       "GAAH4OT36RRCCAGKARGPN2HLHT2NOBVFHO4GUHA6CF7UKQ4MMV24WQ4N"
-    ]
+    ],
+    "indexerUrl": "https://testnet.mercurydata.app/rest/smart-account-indexer"
   },
   "anchor": {
     "mode": "simulated",
@@ -90,5 +91,5 @@
   "demo": {
     "longFianzaId": 0
   },
-  "updatedAt": "2026-10-25T20:21:14Z"
+  "updatedAt": "2026-10-26T09:34:59Z"
 }
