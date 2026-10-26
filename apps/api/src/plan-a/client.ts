@@ -1,53 +1,14 @@
-// Cliente de la API con rendimiento de Trustless Work para apps/api: el de @fianzas/trustless más las
-// listas por rol, que el paquete aún no expone (issue abierto para P1). La API key nunca sale del servidor.
-import { TW_YIELD_URL, TrustlessApiError, createTrustlessClient, type Escrow, type Roles } from "@fianzas/trustless";
+// Cliente de la API con rendimiento de Trustless Work para apps/api: el de @fianzas/trustless (listas por
+// rol e indexador incluidos desde #99) y la traducción de sus errores a Problem Details. La API key
+// nunca sale del servidor.
+import { TW_YIELD_URL, TrustlessApiError, createTrustlessClient } from "@fianzas/trustless";
 import type { TrustlessConfig } from "../config";
 import { Problem } from "../problem";
 
-export type TwRole = keyof Roles;
-
-export interface TwClient extends ReturnType<typeof createTrustlessClient> {
-  /** Escrows en los que `address` tiene el rol (`GET /helper/get-escrows-by-role`). */
-  getEscrowsByRole(role: TwRole, address: string): Promise<Escrow[]>;
-  /**
-   * Avisa al indexador de TW de una transacción enviada por otra vía (nuestra RPC o el Relayer):
-   * su base de datos solo se actualiza sola con su propio `send-transaction`.
-   */
-  indexTransaction(txHash: string): Promise<void>;
-}
+export type TwClient = ReturnType<typeof createTrustlessClient>;
 
 export function createTwClient(cfg: TrustlessConfig, fetchImpl: typeof fetch = fetch): TwClient {
-  const base = (cfg.baseUrl ?? TW_YIELD_URL).replace(/\/+$/, "");
-  const inner = createTrustlessClient({ apiKey: cfg.apiKey, baseUrl: base, fetch: fetchImpl });
-
-  async function raw(method: "GET" | "PUT", path: string, body?: unknown): Promise<unknown> {
-    const res = await fetchImpl(`${base}${path}`, {
-      method,
-      headers: { "Content-Type": "application/json", "x-api-key": cfg.apiKey },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const text = await res.text();
-    let data: unknown;
-    try {
-      data = text ? JSON.parse(text) : undefined;
-    } catch {
-      data = undefined;
-    }
-    if (!res.ok) throw new TrustlessApiError(res.status, data as never);
-    return data;
-  }
-
-  return {
-    ...inner,
-    async getEscrowsByRole(role, address) {
-      const q = new URLSearchParams({ role, roleAddress: address, type: "single-release", validateOnChain: "true" });
-      const data = await raw("GET", `/helper/get-escrows-by-role?${q}`);
-      return Array.isArray(data) ? (data as Escrow[]) : [];
-    },
-    async indexTransaction(txHash) {
-      await raw("PUT", "/indexer/update-from-txhash", { txHash });
-    },
-  };
+  return createTrustlessClient({ apiKey: cfg.apiKey, baseUrl: (cfg.baseUrl ?? TW_YIELD_URL).replace(/\/+$/, ""), fetch: fetchImpl });
 }
 
 /** Errores de la API de TW → Problem Details, sin filtrar su cuerpo al cliente (API-12). */

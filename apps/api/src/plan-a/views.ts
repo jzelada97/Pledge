@@ -5,6 +5,7 @@ import {
   accruedYield,
   expectedPayout,
   fianzaStatus,
+  floorToUnits,
   fromDecimal,
   type Escrow,
   type FianzaStatus,
@@ -19,7 +20,8 @@ export function statusOf(e: Escrow): FianzaStatus {
 
 export function escrowView(e: Escrow, tenantYieldBps: number, position?: VaultPosition | null) {
   const amount = fromDecimal(e.amount);
-  const balance = fromDecimal(String(e.balance)); // puede traer más de 7 decimales
+  // El saldo puede traer más de 7 decimales o venir en notación exponencial (1e-7): se trunca.
+  const balance = floorToUnits(e.balance);
   const yieldUnits = position ? accruedYield(position, amount) : balance > amount ? balance - amount : 0n;
   const approved = e.milestones[0]?.approved ?? false;
   return {
