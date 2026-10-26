@@ -13,6 +13,10 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ---
 
+## 2026-10-26 · Entrega hecha: se retira el harness de equipo
+- **Decisión:** terminada la hackatón, se quitan los roles por carpeta, los locks, CODEOWNERS, los hooks de Claude Code y el job `harness` de la CI. Queda la CI de tests y el formato de commits como costumbre, no como regla.
+- Decide: Jose
+
 ## 2026-10-26 11:45 · Liberación a plazo en el plan A: la garantía la da la plataforma, no la cadena (#115)
 - **Contexto:** el escrow de Trustless Work no tiene plazos: sin aprobación del casero, el inquilino no puede recuperar la fianza solo. De las tres opciones de #115 (fork del contrato de TW, volver al plan B, o regla en la plataforma) se elige la tercera para la demo.
 - **Decisión:**
