@@ -14,41 +14,13 @@ Hackatón de 28 horas, 4 personas, testnet.
 - API entre front y servidor: `docs/INTERFACES.md` § 8. Las secciones de contratos y factory son del plan B: histórico.
 - Plan y fases: `docs/PIPELINE.md`. Las specs de `.kiro/pipeline/` describen el plan B: histórico.
 
-## Antes de tocar nada
-1. Mira tu rol: `harness/.role`. Si no existe, para y pide al humano que ejecute `node scripts/harness/setup.mjs P<n>`.
-2. Lee `docs/DECISIONS.md`, el `CLAUDE.md` de la carpeta en la que vas a trabajar y, si tocas la API, `docs/INTERFACES.md` § 8.
-3. Trabaja **solo en las carpetas de tu rol** (`harness/team.json`). Un hook bloquea las ediciones fuera de tu área. No intentes saltártelo con Bash, `sed` ni scripts.
+## Cómo se trabaja (tras la entrega)
+La hackatón terminó el 26-oct y el harness de equipo (roles por carpeta, locks, CODEOWNERS, hooks) se retiró. Ya no hay áreas ni locks: cualquiera edita cualquier carpeta y abre un PR contra `main`.
 
-## Roles y carpetas
-| Rol | Persona | Responsable de | Carpetas |
-|---|---|---|---|
-| P1 | Carlos · @CarlosJX7 | Cliente de la API de Trustless Work y reglas de la fianza (roles, estados, repartos) | `packages/trustless/` (`contracts/escrow/` y `contracts/factory/` son del plan B: histórico) |
-| P2 | Jose · @jzelada97 | DeFi + infra + **API compatible con Trustless Work**, **integrador** | `apps/api/` (y su montaje en `apps/web/app/api/`), `contracts/mock-vault/`, `contracts/yield-adapter/`, `packages/bindings/` (generado), `scripts/deploy|e2e|fund/`, `deployments/` |
-| P3 | Ricardo · @RicardoMatosR | Onboarding sin cripto | `packages/wallet/` (passkeys + Relayer), `packages/anchor/` (SEP-24/SEP-45) |
-| P4 | Diego · @Diego-Matoss | Pitch | `pitch/` |
-| Libre | Todos (sin lock ni `cross-area`) | Front del producto desde el 26-oct (#105): casero e inquilino, y backoffice del staff. Repartidlo con issues asignados para no pisaros | `apps/web/` (salvo `apps/web/app/api/`, que es de P2), `apps/backoffice/` |
-| Compartido | Todos | Requiere **lock** | `docs/INTERFACES.md`, `.kiro/` (specs), `CLAUDE.md`, `NOTICE.md`, `harness/`, `.claude/`, `.github/`, archivos de configuración y dependencias en la raíz |
-
-`docs/` (salvo INTERFACES) y `README.md` son libres.
-
-## Si necesitas algo de otra área
-- **No lo edites.** Abre un issue con `/bloqueo` (si te frena) o con la plantilla "Cambio de interfaz" (si cambia una firma, evento o tipo).
-- Mientras esperas, usa un **mock** en tu carpeta que cumpla `docs/INTERFACES.md`. Nadie espera más de 15 minutos sin mock.
-- Para editar un archivo compartido: `/lock <área>` → cambio → PR → `/unlock <área>`. Un lock dura como mucho 30 minutos.
-
-## Ramas, commits y PR
-- Rama: `p<n>/<tarea-corta>` (ej. `p1/approve-release`). Nunca trabajes en `main`.
-- Commits en formato **Conventional Commits con scope de área** (lo valida `.githooks/commit-msg`):
-  `tipo(scope): descripción en imperativo, en español, ≤72 caracteres`
-  - Tipos: `feat`, `fix`, `test`, `docs`, `refactor`, `chore`, `ci`, `perf`.
-  - Scopes: `escrow`, `factory`, `trustless`, `api`, `vault`, `adapter`, `bindings`, `scripts`, `wallet`, `anchor`, `web`, `backoffice`, `pitch`, `interfaces`, `harness`, `ci`, `deps`, `docs`.
-  - Cambio que rompe la interfaz: `feat(escrow)!: …` y una línea `BREAKING: …` en el cuerpo.
-  - Enlaza el issue en el cuerpo: `Refs: #12`.
-  - Ejemplo: `feat(escrow): añadir approve_release con doble aprobación`.
-- PR pequeños (objetivo < 300 líneas), un tema por PR. El título del PR sigue el mismo formato, porque se fusiona con **squash**.
-- Antes de abrir el PR: tests y typecheck de tu área en verde (`/pr` lo hace).
-- `main` está protegida: requiere CI en verde y **1 aprobación de cualquiera de los otros tres**. El primero que esté libre revisa, en menos de 15 minutos. **Nunca** `git push --force` ni push directo a `main`.
-- Sincroniza con `main` al menos cada 2 horas (`/sync`).
+- Lee primero `docs/DECISIONS.md` y el `CLAUDE.md` de la carpeta en la que trabajes; si tocas la API, `docs/INTERFACES.md` § 8.
+- Rama por tarea, PR pequeño con tests y typecheck en verde (`pnpm --filter <paquete> typecheck|test`). Commits en español, en imperativo, con el formato `tipo(scope): descripción` como hasta ahora.
+- Nunca `git push --force` ni push directo a `main`.
+- Despliegue: `docs/DEPLOY.md`.
 
 ## Reglas de código
 - **Trustless Work:** solo a través de `@fianzas/trustless`, que tiene el cliente y las reglas de la fianza. No reimplementes roles, estados ni repartos en otra parte. La `TW_API_KEY` solo vive en el servidor.
@@ -60,6 +32,3 @@ Hackatón de 28 horas, 4 personas, testnet.
 
 ## Glosario
 fianza (deposit), casero (landlord), inquilino (tenant), staff, escrow (uno por fianza, de Trustless Work), aprobar devolución (el casero, `approve-milestone`), liberar (el inquilino, `release-funds`), parar (el casero, `dispute-escrow`), resolver (el staff, `resolve-dispute`), repartir el rendimiento sobrante (el staff, `withdraw-remaining-funds`), reparto por jurisdicción (`tenantYieldBps`, de 0 a 10000; Portugal = 0), comisión de plataforma (`platformFeeBps`, sobre el rendimiento sobrante), vault (DeFindex sobre Blend USDC), comisión de Trustless Work (0,3 %).
-
-## Comandos de Claude Code del equipo
-`/tarea <issue>` empezar una tarea · `/pr` checks, commit, push y PR · `/bloqueo <qué>` reportar un bloqueo · `/sync` ponerse al día con main · `/estado` panel del equipo · `/lock <área>` / `/unlock <área>`.
