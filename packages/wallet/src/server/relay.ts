@@ -2,8 +2,9 @@
 // RelayPolicy y lo envía a OpenZeppelin Channels, que pone la cuenta origen y paga los fees.
 // Uso en Next.js (app/api/relay/route.ts):  export const POST = createRelayHandler({ … });
 import "server-only";
+import { readLimited } from "./body";
 import { createChainLookups, type ChainLookups } from "./chain";
-import { RelayError, parseSubmission, validateSubmission, type RelayPolicy } from "./policy";
+import { RelayError, decodeSubmission, parseSubmission, validateSubmission, type RelayPolicy } from "./policy";
 
 const MAX_BODY_BYTES = 64 * 1024; // security IV-5
 const MINUTE = 60_000;
@@ -65,30 +66,33 @@ export function createRelayHandler(cfg: RelayHandlerConfig): (req: Request) => P
 
   return async (req) => {
     try {
+      // CS-3: Origin presente y permitido. Sin Origin no es una petición de nuestras apps.
       const origin = req.headers.get("origin");
-      if (origin && !policy.allowedOrigins.includes(origin)) return fail("NOT_ALLOWED", 403);
+      if (!origin || !policy.allowedOrigins.includes(origin)) return fail("NOT_ALLOWED", 403);
       if (!(req.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) {
         return fail("UNSUPPORTED_MEDIA_TYPE", 415);
       }
       const t = now();
       if (!perIp.allow(clientIp(req), t) || !global.allow("global", t)) return fail("RATE_LIMITED", 429);
 
-      const text = await req.text();
-      if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) return fail("PAYLOAD_TOO_LARGE", 413);
-      const body = parseSubmission(text);
-      const valid = await validateSubmission(body, policy, chain);
+      const text = await readLimited(req, MAX_BODY_BYTES);
+      if (text === null) return fail("PAYLOAD_TOO_LARGE", 413);
+      const body = decodeSubmission(parseSubmission(text));
 
-      for (const signer of valid.signers) {
-        if (!perCredential.allow(signer, t)) return fail("RATE_LIMITED", 429);
-        if (valid.fn === "create_fianza" && !createsPerCredential.allow(signer, t)) return fail("RATE_LIMITED", 429);
+      // Los cupos por credencial van antes de consultar la red (wasm, registro, simulación): una
+      // credencial sin cupo no gasta RPC.
+      for (const key of body.rateKeys) {
+        if (!perCredential.allow(key, t)) return fail("RATE_LIMITED", 429);
+        if (body.fn === "create_fianza" && !createsPerCredential.allow(key, t)) return fail("RATE_LIMITED", 429);
       }
+      await validateSubmission(body, policy, chain);
 
       let res: Response;
       try {
         res = await doFetch(`${relayerUrl}/`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
-          body: JSON.stringify({ params: { func: body.func, auth: body.auth } }),
+          body: JSON.stringify({ params: { func: body.raw.func, auth: body.raw.auth } }),
         });
       } catch {
         return fail("RELAYER_DOWN", 503);
