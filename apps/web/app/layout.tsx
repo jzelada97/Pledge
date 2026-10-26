@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { connection } from "next/server";
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter, Montserrat } from "next/font/google";
@@ -26,11 +27,12 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   await connection(); // render per request: the CSP nonce from proxy.ts only reaches dynamic pages
   const { locale } = await getI18n();
+  const nonce = (await headers()).get("x-nonce") ?? undefined; // next-themes' inline script needs it or the CSP blocks it
   return (
     // next-themes sets the `dark` class on <html> before paint, so the server markup can't match it
     <html lang={INTL_TAG[locale]} className={cn("font-sans", inter.variable, geistMono.variable, montserrat.variable)} suppressHydrationWarning>
       <body className="min-h-dvh bg-background text-foreground antialiased">
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+        <ThemeProvider nonce={nonce} attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <I18nProvider locale={locale}>
             {children}
             <Toaster position="top-center" richColors={false} />
