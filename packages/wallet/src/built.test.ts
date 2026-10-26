@@ -1,4 +1,4 @@
-import { Address, xdr } from "@stellar/stellar-sdk";
+import { Address, StrKey, xdr } from "@stellar/stellar-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { sendBuilt, type BuiltDeps } from "./built";
 import { WalletError } from "./errors";
@@ -89,5 +89,19 @@ describe("sendBuilt", () => {
     await expect(sendBuilt(build, d, { signXdr })).resolves.toEqual({ hash: "g1" });
     expect(fetchMock.mock.calls[0][0]).toBe("/api/stellar/send-transaction");
     expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({ signedXdr: "AAAA-firmado" });
+  });
+});
+
+describe("contextRuleIdsFor", () => {
+  it("da un id de regla por cada invocación del árbol (raíz + subinvocaciones), #124", async () => {
+    const { contextRuleIdsFor } = await import("./smart-wallet");
+    const args = (fn: string) => new xdr.InvokeContractArgs({ contractAddress: new Address(StrKey.encodeContract(Buffer.alloc(32, 1))).toScAddress(), functionName: fn, args: [] });
+    const inv = (fn: string, subs: xdr.SorobanAuthorizedInvocation[] = []) =>
+      new xdr.SorobanAuthorizedInvocation({ function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(args(fn)), subInvocations: subs });
+    const entry = (root: xdr.SorobanAuthorizedInvocation) =>
+      new xdr.SorobanAuthorizationEntry({ credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(), rootInvocation: root });
+    expect(contextRuleIdsFor(entry(inv("approve_milestone")))).toEqual([0]);
+    expect(contextRuleIdsFor(entry(inv("fund_escrow", [inv("transfer")])))).toEqual([0, 0]);
+    expect(contextRuleIdsFor(entry(inv("a", [inv("b", [inv("c")]), inv("d")])))).toEqual([0, 0, 0, 0]);
   });
 });
