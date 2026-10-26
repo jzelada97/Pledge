@@ -15,7 +15,7 @@ import type {
   Escrow,
   ReleaseFundsBody,
 } from "./types";
-import { fromDecimal, toDecimal } from "./units";
+import { floorToUnits, fromDecimal, toDecimal } from "./units";
 
 /** El único hito: la devolución de la fianza. */
 export const RELEASE_MILESTONE = "0";
@@ -31,6 +31,7 @@ export type FianzaErrorCode =
   | "ALREADY_SETTLED"
   | "DISPUTED"
   | "NOT_DISPUTED"
+  | "NOT_SETTLED"
   | "INVALID_AMOUNT";
 
 export class FianzaError extends Error {
@@ -123,17 +124,25 @@ export type ApproveAction =
   | { kind: "approve"; body: ApproveMilestoneBody }
   | { kind: "release"; body: ReleaseFundsBody };
 
+/** Aprobar la devolución y parar solo valen con la fianza depositada, sin parar ni liquidar. */
+function assertActive(escrow: Escrow): void {
+  const status = fianzaStatus(escrow);
+  if (status === "Settled") throw new FianzaError("ALREADY_SETTLED", "La fianza ya está liquidada");
+  if (status === "Stopped") throw new FianzaError("DISPUTED", "La fianza está parada");
+  if (status === "Proposed") throw new FianzaError("NOT_FUNDED", "La fianza aún no está depositada");
+}
+
+function releaseApproved(escrow: Escrow): boolean {
+  return escrow.milestones[Number(RELEASE_MILESTONE)]?.approved ?? false;
+}
+
 /**
  * "Aprobar devolución". El casero aprueba el hito (`approve-milestone`); después el inquilino libera
  * (`release-funds`), que paga capital + rendimiento menos comisiones.
  */
 export function planApproveRelease(escrow: Escrow, who: string): ApproveAction {
-  const status = fianzaStatus(escrow);
-  if (status === "Settled") throw new FianzaError("ALREADY_SETTLED", "La fianza ya está liquidada");
-  if (status === "Stopped") throw new FianzaError("DISPUTED", "La fianza está parada");
-  if (status === "Proposed") throw new FianzaError("NOT_FUNDED", "La fianza aún no está depositada");
-
-  const approved = escrow.milestones[Number(RELEASE_MILESTONE)]?.approved ?? false;
+  assertActive(escrow);
+  const approved = releaseApproved(escrow);
   if (who === escrow.roles.approver) {
     if (approved) throw new FianzaError("ALREADY_APPROVED", "El casero ya aprobó la devolución");
     return { kind: "approve", body: { contractId: escrow.contractId, milestoneIndex: RELEASE_MILESTONE, approver: who } };
@@ -145,10 +154,14 @@ export function planApproveRelease(escrow: Escrow, who: string): ApproveAction {
   throw new FianzaError("NOT_PARTY", "Solo el casero o el inquilino pueden aprobar la devolución");
 }
 
-/** "Parar": el casero abre la disputa (v1 no guarda motivo on-chain). */
+/**
+ * "Parar": el casero abre la disputa (v1 no guarda motivo on-chain). Si ya aprobó la devolución no
+ * puede echarse atrás: solo falta que el inquilino libere.
+ */
 export function buildStopBody(escrow: Escrow, landlord: string): DisputeBody {
   if (landlord !== escrow.roles.serviceProvider) throw new FianzaError("NOT_PARTY", "Solo el casero puede parar la fianza");
-  if (fianzaStatus(escrow) !== "Active") throw new FianzaError("NOT_FUNDED", "Solo se puede parar una fianza activa");
+  assertActive(escrow);
+  if (releaseApproved(escrow)) throw new FianzaError("ALREADY_APPROVED", "El casero ya aprobó la devolución");
   return { contractId: escrow.contractId, signer: landlord };
 }
 
@@ -158,22 +171,32 @@ function distributions(parts: [string, bigint][]): Distribution[] {
 
 /**
  * "Resolver": se reparte el importe **fondeado** (lo recomienda TW, porque el saldo crece mientras se
- * construye la transacción). La deducción va al casero y el resto al inquilino. El rendimiento queda
- * en el escrow y se reparte con `buildWithdrawYieldBody`.
+ * construye la transacción). La deducción (de 0 al importe de la fianza) va al casero y el resto al
+ * inquilino. El rendimiento queda en el escrow y se reparte con `buildWithdrawYieldBody`.
+ *
+ * Si el vault ha perdido valor (o redondea 1 stroop a la baja), el saldo es menor que lo fondeado:
+ * repartir lo fondeado haría fallar la resolución en cadena (las distribuciones no pueden superar el
+ * saldo) y la fianza quedaría bloqueada. En ese caso se reparte el saldo disponible: la pérdida la
+ * absorbe el inquilino y, si la deducción supera lo que queda, el casero se lleva todo el saldo.
  */
 export function buildResolveBody(escrow: Escrow, resolver: string, deduction: bigint): DistributionsBody {
   if (resolver !== escrow.roles.disputeResolver) throw new FianzaError("NOT_RESOLVER", "Solo el staff puede resolver");
   if (fianzaStatus(escrow) !== "Stopped") throw new FianzaError("NOT_DISPUTED", "Solo se resuelve una fianza parada");
   const funded = fromDecimal(escrow.amount);
   if (deduction < 0n || deduction > funded) {
-    throw new FianzaError("INVALID_AMOUNT", "La deducción debe estar entre 0 y la fianza");
+    throw new FianzaError("INVALID_AMOUNT", "La deducción debe estar entre 0 y el importe de la fianza");
   }
+  const available = floorToUnits(escrow.balance);
+  const base = available < funded ? available : funded;
+  // Sin saldo, las distribuciones quedarían vacías y la API las rechaza.
+  if (base === 0n) throw new FianzaError("INVALID_AMOUNT", "No queda saldo que repartir");
+  const cut = deduction < base ? deduction : base;
   return {
     contractId: escrow.contractId,
     disputeResolver: resolver,
     distributions: distributions([
-      [escrow.roles.receiver, funded - deduction],
-      [escrow.roles.serviceProvider, deduction],
+      [escrow.roles.receiver, base - cut],
+      [escrow.roles.serviceProvider, cut],
     ]),
   };
 }
@@ -185,7 +208,7 @@ function checkBps(name: string, bps: number): void {
 }
 
 /**
- * Reparto del rendimiento que queda en el escrow tras resolver (`withdraw-remaining-funds`):
+ * Reparto del rendimiento que queda en el escrow una vez liquidada la fianza (`withdraw-remaining-funds`):
  * 1. `platformFeeBps` para la tesorería (`platformAddress`). Opcional y 0 por defecto: si la plataforma
  *    cobra en el plan A es una decisión de producto pendiente (ver "Huecos" en CLAUDE.md).
  * 2. Del resto, `tenantYieldBps` para el inquilino según la jurisdicción y lo demás para el casero.
@@ -200,9 +223,13 @@ export function buildWithdrawYieldBody(
   platformFeeBps = 0,
 ): DistributionsBody {
   if (resolver !== escrow.roles.disputeResolver) throw new FianzaError("NOT_RESOLVER", "Solo el staff puede repartir");
+  if (fianzaStatus(escrow) !== "Settled") {
+    throw new FianzaError("NOT_SETTLED", "Solo se reparte el sobrante de una fianza resuelta o liberada");
+  }
   checkBps("tenantYieldBps", tenantYieldBps);
   checkBps("platformFeeBps", platformFeeBps);
-  if (remaining < 0n) throw new FianzaError("INVALID_AMOUNT", "El sobrante no puede ser negativo");
+  // Sin sobrante, las distribuciones quedarían vacías y la API las rechaza.
+  if (remaining <= 0n) throw new FianzaError("INVALID_AMOUNT", "No hay sobrante que repartir");
   const toTreasury = (remaining * BigInt(platformFeeBps)) / BPS;
   const net = remaining - toTreasury;
   const toTenant = (net * BigInt(tenantYieldBps)) / BPS;

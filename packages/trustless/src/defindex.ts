@@ -1,7 +1,7 @@
 // Rendimiento de la fianza en el vault de DeFindex de Trustless Work. Ya no hay supuestos: el
 // escrow deposita al fondear y `GET /escrow/single-release/vault-position` da su valor actual.
 import type { VaultPosition } from "./types";
-import { fromDecimal } from "./units";
+import { floorToUnits } from "./units";
 
 /** Vault de DeFindex que usa la API si el deploy no manda `vault` (testnet). */
 export const TW_VAULT_TESTNET = "CCG3G4YUO3FOPCTZXDSXOB3VXLOWVW3G5FB6RJNB45TYQ34SBS7TS7ZJ";
@@ -16,10 +16,11 @@ const BPS = 10_000n;
 
 /**
  * Rendimiento acumulado en unidad mínima: valor en el vault menos lo fondeado. Justo después de
- * fondear puede salir -1 stroop por el redondeo del vault; se devuelve 0.
+ * fondear puede salir -1 stroop por el redondeo del vault; se devuelve 0. `underlying` sale de
+ * valorar las shares y puede traer más de 7 decimales: se trunca.
  */
 export function accruedYield(position: VaultPosition, funded: bigint): bigint {
-  const diff = fromDecimal(position.underlying) - funded;
+  const diff = floorToUnits(position.underlying) - funded;
   return diff > 0n ? diff : 0n;
 }
 

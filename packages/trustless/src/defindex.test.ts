@@ -8,6 +8,8 @@ describe("rendimiento en el vault", () => {
     expect(accruedYield({ vault: TW_VAULT_TESTNET, shares: 19.9996115, underlying: 20.0000023 }, funded)).toBe(23n);
     // Justo después de fondear, el redondeo del vault deja 1 stroop por debajo.
     expect(accruedYield({ vault: TW_VAULT_TESTNET, shares: 9.999728, underlying: 9.9999999 }, 100_000_000n)).toBe(0n);
+    // La valoración de shares puede traer más de 7 decimales: se trunca en vez de lanzar.
+    expect(accruedYield({ vault: TW_VAULT_TESTNET, shares: 1, underlying: 500.00008931 }, 5_000_000_000n)).toBe(893n);
   });
 
   it("el cobro esperado descuenta el 0,3 % de TW y el platformFee sobre todo lo retirado", () => {

@@ -14,7 +14,7 @@
 ## Mapeo (src/fianza.ts)
 - Roles v1, uno por rol: `approver` = `serviceProvider` = casero; `releaseSigner` = `receiver` = inquilino; `platformAddress` = tesorería (cobra `platformFee` **y puede actualizar el escrow**: es una cuenta de la plataforma); `disputeResolver` = staff.
 - "Aprobar devolución" = dos pasos: el casero aprueba el hito (`approve-milestone`, índice `"0"`) y el inquilino libera (`release-funds`). Al liberar se paga capital + rendimiento menos comisiones.
-- Parar = `dispute-escrow` del casero. Resolver = `resolve-dispute` con la deducción para el casero y el resto para el inquilino (con pérdida en el vault, solo lo que queda: #69). El rendimiento que sobra se reparte con `withdraw-remaining-funds` (`buildWithdrawYieldBody`): primero la comisión opcional de plataforma (`platformFeeBps`, 0 por defecto) y después la jurisdicción (`tenantYieldBps`).
+- Parar = `dispute-escrow` del casero, solo antes de aprobar la devolución. Resolver = `resolve-dispute` repartiendo el **importe fondeado** (deducción al casero, resto al inquilino); si el vault perdió valor, se reparte el saldo y la pérdida la absorbe el inquilino. El rendimiento que sobra se reparte, ya liquidada la fianza, con `withdraw-remaining-funds` (`buildWithdrawYieldBody`): primero la comisión opcional de plataforma (`platformFeeBps`, 0 por defecto) y después la jurisdicción (`tenantYieldBps`).
 - `signer` del deploy: por defecto la tesorería (cuenta G de la plataforma), porque las partes pueden ser passkeys.
 
 ## Rendimiento y comisiones (src/defindex.ts)
@@ -31,4 +31,4 @@
 - **La plataforma no ingresa nada en el plan A.** Con `platformFee = 0` (la de TW se cobra sobre el capital) solo puede cobrar en `withdraw-remaining-funds` vía `platformFeeBps`, y eso solo ocurre tras una disputa. **Decisión de producto pendiente:** qué porcentaje y si compensa cobrar sobre el capital en `platformFee`.
 
 ## Comandos
-- `pnpm --filter @fianzas/trustless typecheck test`
+- `pnpm --filter @fianzas/trustless typecheck && pnpm --filter @fianzas/trustless test` (en una sola orden, `test` le llega a `tsc` como argumento y falla)

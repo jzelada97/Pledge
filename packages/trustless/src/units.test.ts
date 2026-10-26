@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fromDecimal, toDecimal } from "./units";
+import { floorToUnits, fromDecimal, toDecimal } from "./units";
 
 describe("units", () => {
   it("convierte unidad mínima a decimales y vuelta, sin perder precisión", () => {
@@ -26,5 +26,24 @@ describe("units", () => {
     expect(() => fromDecimal(Number.NaN)).toThrow(RangeError);
     expect(() => toDecimal(-1n)).toThrow(RangeError);
     expect(() => toDecimal(BigInt(Number.MAX_SAFE_INTEGER) + 1n)).toThrow(RangeError);
+  });
+
+  it("floorToUnits trunca a 7 decimales (nunca redondea hacia arriba)", () => {
+    expect(floorToUnits(500.0000893)).toBe(5_000_000_893n);
+    expect(floorToUnits(449.99999999999994)).toBe(4_499_999_999n);
+    expect(floorToUnits("10.00000059")).toBe(100_000_005n);
+    expect(floorToUnits(500)).toBe(5_000_000_000n);
+    expect(() => floorToUnits(-1)).toThrow(RangeError);
+    expect(() => floorToUnits(Number.NaN)).toThrow(RangeError);
+  });
+
+  it("importes por debajo de 1e-6 (notación exponencial) no se redondean hacia arriba", () => {
+    expect(floorToUnits(9.6e-7)).toBe(9n);
+    expect(floorToUnits(5e-8)).toBe(0n);
+    expect(floorToUnits(1e-7)).toBe(1n);
+    expect(fromDecimal(9e-7)).toBe(9n);
+    expect(() => fromDecimal(9.9e-7)).toThrow(RangeError);
+    expect(() => fromDecimal(-1e-7)).toThrow(RangeError);
+    expect(() => floorToUnits(1e21)).toThrow(RangeError);
   });
 });
