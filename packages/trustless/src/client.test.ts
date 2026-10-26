@@ -65,6 +65,14 @@ describe("createTrustlessClient", () => {
     expect(firstCall(fetch).url).toBe(`${TW_YIELD_URL}/escrow/single-release/vault-position?contractId=${ESCROW_ID}`);
   });
 
+  it("con listas vacías no llama a la API", async () => {
+    const fetch = mockFetch(200, []);
+    const tw = createTrustlessClient({ apiKey: "k", fetch });
+    expect(await tw.getEscrows([])).toEqual([]);
+    expect(await tw.getBalances([])).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("envía transacciones firmadas a /helper/send-transaction", async () => {
     const fetch = mockFetch(201, { message: "ok", contractId: ESCROW_ID });
     const tw = createTrustlessClient({ apiKey: "k", fetch });
