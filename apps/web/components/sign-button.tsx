@@ -11,10 +11,11 @@ type Props = {
   success: string;
   fail?: boolean;
   onDone?: () => void;
+  action?: () => Promise<unknown>;
 } & Pick<ComponentProps<typeof Button>, "variant" | "size" | "disabled" | "className">;
 
-export function SignButton({ label, success, fail, onDone, disabled, ...button }: Props) {
-  const { phase, run, busy, phaseText } = useSign({ success, fail, onDone });
+export function SignButton({ label, success, fail, onDone, action, disabled, ...button }: Props) {
+  const { phase, run, busy, phaseText } = useSign({ success, fail, onDone, action });
   const done = phase === "done";
 
   return (

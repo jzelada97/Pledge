@@ -10,7 +10,9 @@
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@fianzas/anchor": "workspace:*",
     "@fianzas/api": "workspace:*",
+    "@fianzas/wallet": "workspace:*",
     "@hookform/resolvers": "5.9.2",
     "class-variance-authority": "0.7.1",
     "cn": "0.5.0",
