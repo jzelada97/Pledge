@@ -1,5 +1,7 @@
 # contracts/factory · P1
 
+> **Plan B, descartado (docs/DECISIONS.md, 26-oct).** Esta factory es histórica: no se desarrolla, no se despliega y no se toma como referencia. En el plan A no hay factory: los escrows los despliega Trustless Work (`TW_DEPLOYER_TESTNET`).
+
 `FianzaFactory`: crea **un escrow por fianza** y es el punto de entrada del front. Firmas: `docs/INTERFACES.md`. Diseño: `.kiro/pipeline/architecture.md`.
 
 ## Qué hace

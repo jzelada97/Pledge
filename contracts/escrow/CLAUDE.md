@@ -1,5 +1,7 @@
 # contracts/escrow · P1
 
+> **Plan B, descartado (docs/DECISIONS.md, 26-oct).** Este contrato es histórico: no se desarrolla, no se despliega y no se toma como referencia. El producto usa el escrow de Trustless Work a través de `packages/trustless`.
+
 Escrow de **una fianza**. Es un **fork del Single-Release de Trustless Work** con depósito en DeFindex. Lo despliega `contracts/factory/`. Firmas: `docs/INTERFACES.md`. Diseño y cambios por archivo: `.kiro/pipeline/architecture.md`.
 
 ## Origen del código
