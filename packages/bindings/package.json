@@ -1,0 +1,22 @@
+{
+  "name": "@fianzas/bindings",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bindings TypeScript generados por scripts/bindings.sh. NO EDITAR A MANO.",
+  "exports": {
+    "./escrow": "./escrow/src/index.ts",
+    "./factory": "./factory/src/index.ts",
+    "./mock_vault": "./mock_vault/src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "16.4.1",
+    "buffer": "6.0.3"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "$comment": "Direcciones de testnet. Lo escribe scripts/deploy (P2); el front y el Relayer lo empaquetan como ancla de confianza (INTERFACES § 6). null = aún no desplegado. Fuente de verdad: la cadena.",
+  "network": "testnet",
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "networkPassphrase": "Test SDF Network ; September 2015",
+  "startLedger": 5387195,
+  "factory": "CC3QA5DN37DBUFLFFOLXZYXRL4MZ2GAKQ5OTJDG2AQ7DMGRGCKV5W2IL",
+  "escrowWasmHash": "4e841052689ebc56f1a120544fd5f08cbbe106c66c6f33c30ce97bdd014a5b2f",
+  "escrowWasmHashesAllowed": [
+    "4e841052689ebc56f1a120544fd5f08cbbe106c66c6f33c30ce97bdd014a5b2f"
+  ],
+  "token": "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU",
+  "tokenCode": "USDC",
+  "tokenIssuer": "GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56",
+  "strategies": [
+    {
+      "id": "usdc_fixed",
+      "kind": "defindex",
+      "vault": "CDKNUOYYDNSHVOKVT7XNQAYUQ7U4OGNJ4Z5DGXY5QW6AIYG6VUPKDOQO",
+      "vaultName": "Fianzas USDC Vault",
+      "vaultSymbol": "FZUSDC",
+      "vaultManager": "GBKASLNH25VETEB5MGCLPIX5DG7SY5PLFOBKMIWMTRFJVQNNJAOHXYQ7",
+      "vaultFeeBps": 100,
+      "protocolFeeBps": 2000,
+      "defindexStrategy": "CALLOM5I7XLQPPOPQMYAHUWW4N7O3JKT42KQ4ASEEVBXDJQNJOALFSUY",
+      "apyPool": null,
+      "assetName": "USDC:GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56",
+      "risk": "standard",
+      "simulated": false,
+      "default": true,
+      "maxVaultFeeBps": 200
+    },
+    {
+      "id": "usdc_mock",
+      "kind": "defindex",
+      "vault": "CBHM2LC6ERMGRDVTYW4NNX5S2DVZPPYEVPC4AIUM426J5CME6MZCCRYU",
+      "risk": "standard",
+      "simulated": true,
+      "default": false,
+      "assetName": "USDC:GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56",
+      "maxVaultFeeBps": 200,
+      "vaultManager": "GBKASLNH25VETEB5MGCLPIX5DG7SY5PLFOBKMIWMTRFJVQNNJAOHXYQ7",
+      "vaultFeeBps": 100,
+      "protocolFeeBps": 2000
+    },
+    {
+      "id": "custody",
+      "kind": "noyield",
+      "vault": null,
+      "risk": "noyield",
+      "simulated": false,
+      "default": false,
+      "assetName": "USDC:GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56"
+    }
+  ],
+  "defindex": {
+    "factory": "CDSCWE4GLNBYYTES2OCYDFQA2LLY4RBIAX6ZI32VSUXD7GO6HRPO4A32",
+    "vaultWasmHash": "f345228dca59c6605789620e9ec62ff4847a0927c33dac7581a955fe746016be",
+    "publicVault": "CBMVK2JK6NTOT2O4HNQAIQFJY232BHKGLIMXDVQVHIIZKDACXDFZDWHN"
+  },
+  "soroswap": {
+    "router": "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+    "factory": "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+    "pairXlmUsdc": "CBR76WMT6J733CCVBP23M2EL5QGP5HXLPEFNFZGZ7IB6QHOJAHP7YM3V",
+    "xlm": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+  },
+  "admin": "GBKASLNH25VETEB5MGCLPIX5DG7SY5PLFOBKMIWMTRFJVQNNJAOHXYQ7",
+  "staff": [
+    "GAO7MHQHL6LAGUSFGTSDVMISV4UILI33PGOSJEBBR5XB5OXBXKJDR3C2"
+  ],
+  "treasury": "GBNOMT2VMMNGWPENBY2FP66ASRMUVSJRCJZWIZ2ENZ45OYJKSL67L4N7",
+  "platformFeeBps": 2000,
+  "twFeeBps": 0,
+  "twFeeReceiver": null,
+  "tenantYieldBps": 0,
+  "faucet": "GDHIKULVY3XBBWE53GZNMABKZIHO6G6TLKMUQLY4ODQ2BHFRKWBFYDC3",
+  "readSource": "GDQQBJ4Y6V24VOROSCFZQXKA7IAIG5HETIQMLC36GQ3KF6KAIHP4PRLX",
+  "relayer": "https://channels.openzeppelin.com/testnet",
+  "smartAccount": {
+    "accountWasmHash": "1b5f4534a76322da2ad7c745f6900857a6802b0ca79850c35a03561df997785a",
+    "webauthnVerifier": "CC7EKIHQP3TN4CARQDND6CEOY2UXLWWC2X5GHTD5NLAT7BG5GPZIOM3F",
+    "deployers": [
+      "GAAH4OT36RRCCAGKARGPN2HLHT2NOBVFHO4GUHA6CF7UKQ4MMV24WQ4N"
+    ]
+  },
+  "anchor": {
+    "mode": "simulated",
+    "homeDomain": "testanchor.stellar.org"
+  },
+  "demo": {
+    "longFianzaId": 0
+  },
+  "updatedAt": "2026-10-25T20:21:14Z"
+}

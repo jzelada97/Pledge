@@ -43,7 +43,7 @@ Regla: **cada flecha tiene un mock** desde la hora 2. Nadie espera a otro rol pa
 ## Fase 0 · Harness y fork (H0–H1) → G0
 | Rol | Tareas |
 |---|---|
-| P1 | Setup. **H0:30:** copiar `contracts/escrow/src/**` de TW `single-release-develop-v2` @ `1d22d0c1b9c5788f4fd7184e42024bbe10303756` a `contracts/escrow/`, con la cabecera de origen en cada archivo. `cargo build --target wasm32v1-none --release` y **tests upstream en verde** con nuestro toolchain. Medir el tamaño del wasm. `contracts/escrow/NOTICE.md` y `contracts/factory/NOTICE.md`. **No empujar código copiado hasta que `NOTICE.md` registre el permiso de TW** (el repo es público; security R-14). |
+| P1 | Setup. **H0:30:** copiar `contracts/escrow/src/**` de TW `single-release-develop-v2` @ `1d22d0c1b9c5788f4fd7184e42024bbe10303756` a `contracts/escrow/`, con la cabecera de origen en cada archivo. `cargo build --target wasm32v1-none --release` y **tests upstream en verde** con nuestro toolchain. Medir el tamaño del wasm. `contracts/escrow/NOTICE.md` y `contracts/factory/NOTICE.md` con la atribución a TW. |
 | P2 | Esqueleto del monorepo: workspace Cargo con `soroban-sdk = "28.0.0"` y perfil release copiado de TW, workspace pnpm. CI con el build del wasm del escrow **antes** de `cargo test -p factory`. Identidades del CLI (una por rol). PR de `harness/team.json` con el área `api` (ya incluido en este PR). |
 | P3, P4 | Clonar, `node scripts/harness/setup.mjs P<n>`, instalar toolchain (Node 20+, pnpm, gh). Probar `/estado`. P4: esqueleto Next ×2. |
 | Todos | Acordar las dependencias npm y crates principales (P2 las instala de una vez para evitar choques en el lockfile). |
@@ -118,7 +118,7 @@ Turnos de descanso de 2 en 2: **P1+P3** descansan en H12–H14 y **P2+P4** en H1
 | P1 | Checklist de seguridad del contrato **y de la factory** (`contracts/escrow/CLAUDE.md` + security § 13). `NOTICE.md` final. |
 | P2 | README con diagrama, direcciones de contratos, cómo reproducir la demo y enlace a los NOTICE. |
 | P3 | Cuentas demo preparadas en dos móviles. |
-| P4 | Slides ("construido sobre Trustless Work, con su permiso"), guion y vídeo de respaldo. |
+| P4 | Slides ("construido sobre Trustless Work"), guion y vídeo de respaldo. |
 | Todos | Dos ensayos completos de la demo (H24 y H26). |
 
 **G5:** entrega enviada antes de H28 con repo público, vídeo y slides.

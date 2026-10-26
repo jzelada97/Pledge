@@ -83,6 +83,29 @@ describe("createSimRampHandler", () => {
     expect((await POST(post({ to: ours, amount: "0.0000001" }))).status).toBe(429); // 6.ª petición de la IP
   });
 
+  it("dos peticiones simultáneas no se saltan el tope por dirección", async () => {
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const slow: RampChain = { wasmHashOf: async (c) => (await gate, c === ours ? ACCOUNT_WASM : null), transfer };
+    const { POST } = createSimRampHandler(config({ chain: slow, perAddressCap: "100" }));
+    const both = Promise.all([POST(post({ to: ours, amount: "100" })), POST(post({ to: ours, amount: "100" }))]);
+    open();
+    expect((await both).map((r) => r.status).sort()).toEqual([200, 429]);
+    expect(transfer).toHaveBeenCalledTimes(1);
+  });
+
+  it("exige la cabecera Origin y rechaza cuerpos enormes", async () => {
+    const { POST } = createSimRampHandler(config());
+    const noOrigin = new Request("https://fianzas.example/api/ramp", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-real-ip": "1.2.3.4" },
+      body: JSON.stringify({ to: ours, amount: "1" }),
+    });
+    expect((await POST(noOrigin)).status).toBe(403);
+    expect((await POST(post({ to: ours, amount: "1", pad: "x".repeat(65 * 1024) }))).status).toBe(413);
+    expect(transfer).not.toHaveBeenCalled();
+  });
+
   it("si la transferencia falla, devuelve RAMP_DOWN y no consume el tope", async () => {
     const { POST } = createSimRampHandler(config());
     transfer.mockRejectedValueOnce(new Error("boom"));

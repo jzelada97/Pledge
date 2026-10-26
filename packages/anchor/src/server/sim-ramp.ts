@@ -5,9 +5,11 @@ import "server-only";
 import { Networks, StrKey } from "@stellar/stellar-sdk";
 import { isValidAmount, toStroops } from "../amount";
 import type { AnchorStatus } from "../types";
+import { readLimited } from "./body";
 import { createRampChain, type RampChain } from "./chain";
 
 const HOUR = 60 * 60 * 1000;
+const MAX_BODY_BYTES = 64 * 1024; // security IV-5, igual que el Relayer
 
 export interface SimRampConfig {
   networkPassphrase: string;
@@ -69,14 +71,17 @@ export function createSimRampHandler(cfg: SimRampConfig): {
 
   async function POST(req: Request): Promise<Response> {
     if (!cfg.enabled) return fail("DISABLED", 403);
+    // CS-3: Origin presente y permitido. Sin Origin no es una petición de nuestras apps.
     const origin = req.headers.get("origin");
-    if (origin && !cfg.allowedOrigins.includes(origin)) return fail("NOT_ALLOWED", 403);
+    if (!origin || !cfg.allowedOrigins.includes(origin)) return fail("NOT_ALLOWED", 403);
     if (!(req.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) {
       return fail("UNSUPPORTED_MEDIA_TYPE", 415);
     }
+    const text = await readLimited(req, MAX_BODY_BYTES);
+    if (text === null) return fail("PAYLOAD_TOO_LARGE", 413);
     let body: unknown;
     try {
-      body = JSON.parse(await req.text());
+      body = JSON.parse(text);
     } catch {
       return fail("BAD_REQUEST", 400);
     }
@@ -91,11 +96,17 @@ export function createSimRampHandler(cfg: SimRampConfig): {
     if (!perIp.allow(clientIp(req), t) || !global.allow("global", t)) return fail("RATE_LIMITED", 429);
     const already = sentTo.get(to) ?? 0n;
     if (already + stroops > capStroops) return fail("RATE_LIMITED", 429);
+    // Se reserva antes del primer await: si no, dos peticiones simultáneas leen el mismo acumulado y las
+    // dos pasan el tope. Se devuelve si al final no se envía.
+    sentTo.set(to, already + stroops);
+    const unreserve = () => sentTo.set(to, (sentTo.get(to) ?? stroops) - stroops);
 
     const hash = await chain.wasmHashOf(to).catch(() => null);
-    if (!hash || !cfg.accountWasmHashes.includes(hash)) return fail("NOT_ALLOWED", 403);
+    if (!hash || !cfg.accountWasmHashes.includes(hash)) {
+      unreserve();
+      return fail("NOT_ALLOWED", 403);
+    }
 
-    sentTo.set(to, already + stroops); // se reserva antes de enviar para que dos peticiones no superen el tope
     const run = queue.then(() => chain.transfer(to, stroops));
     queue = run.catch(() => undefined);
     try {
@@ -103,7 +114,7 @@ export function createSimRampHandler(cfg: SimRampConfig): {
       issued.set(id, "completed");
       return Response.json({ id, status: "completed" });
     } catch {
-      sentTo.set(to, (sentTo.get(to) ?? stroops) - stroops);
+      unreserve();
       return fail("RAMP_DOWN", 502);
     }
   }

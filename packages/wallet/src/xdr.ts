@@ -16,6 +16,10 @@ export const PERMISSIONLESS_FUNCTIONS: ReadonlySet<string> = new Set(["claim_aft
 // Llevan exactamente una subinvocación token.transfer(firmante, escrow, importe) (INTERFACES § 7).
 export const TRANSFER_FUNCTIONS: ReadonlySet<string> = new Set(["fund_escrow", "stop"]);
 
+// Escrow single-release con rendimiento de Trustless Work (rama feat/single-release-v1-defindex-yield).
+// Solo las funciones que firma una parte con passkey; las del staff y las de admin no pasan por aquí.
+export const TRUSTLESS_USER_FUNCTIONS = ["fund_escrow", "approve_milestone", "release_funds", "dispute_escrow"] as const;
+
 // Dirección de unas credenciales Address o AddressV2 (cuentas inteligentes). null para SOURCE_ACCOUNT y
 // delegados, que nunca se aceptan (security SRV-3).
 export function credentialAddress(entry: xdr.SorobanAuthorizationEntry): string | null {

@@ -87,7 +87,6 @@
     - **MiCA art. 50**: prohíbe a emisores y CASP conceder intereses sobre tokens de dinero electrónico como el USDC, y la custodia de criptoactivos de terceros puede requerir licencia.
     - PRIIPs/MiCA si se ofrecen RWA.
     - PBC/FT con rampa fiat real.
-  - **Licencia (R-14):** el código de TW no tiene licencia, así que el permiso escrito tiene que cubrir la publicación del fork (Q-17). Es un riesgo legal, no técnico, pero bloquea G5 si no se resuelve.
 
 ---
 
@@ -1065,7 +1064,6 @@ No hay ningún problema **crítico** que impida empezar: la arquitectura ya inco
 | 19 | `inviteCode` visible para la API (R-18) | Baja | API-4; ed25519 [M] | M |
 | 20 | N-20: `platformFee = 0` en la forma TW | Baja | API-16 | H |
 | 21 | N-21: inconsistencias del documento | Baja | § 15 | G1 |
-| 22 | Licencia del código de TW (R-14) | Alta (legal) | Permiso escrito que cubra la publicación (Q-17) **antes de hacer público el repo** | G0/G5 |
 
 ### 10.2 Patrones aprobados
 - **Fork de TW con cortes en lugar de añadidos:** se eliminan el reparto libre del resolver, `withdraw_remaining_funds`, `update_escrow` y el destino del fee como argumento del llamante. Queda menos superficie que en el upstream.
@@ -1394,7 +1392,6 @@ INTERFACES se genera desde la § 6 de `architecture.md`. Abajo va la sección de
 | R-11 Auth del vault | Correcto | Fragmento 1 de 4.1 con `vault.balance(escrow)` en lugar de `shares_of`, y `deposit(..., amounts_min = [amount], ...)`. Tests de `vault_auth.rs` sobre `fund_escrow`, sin `mock_all_auths` | H |
 | R-12 Presupuesto | Correcto | Medir en el spike el coste de `create_fianza` (despliegue) y de `fund_escrow` con `invest = true`. Ver N-3 | H |
 | R-13 Bond | Correcto | Sección 12 completa. Invariante por instancia: `balance(escrow) == bond_held + (amount si NoYield y no liquidada) + donaciones` | H |
-| R-14 Licencia y permiso | **Alta (legal) y urgente** | El repositorio **ya es público**: empujar una rama con código de TW lo publica aunque no se fusione. **No se empuja código copiado hasta que `NOTICE.md` registre un permiso que cubra la publicación** (o se trabaja en local hasta tenerlo) | H, antes del primer push del fork |
 | R-15 Regulación | Aceptado (fuera de la hackatón) | Ningún texto dice "sin riesgo" ni "garantizado"; el rendimiento es "variable". MiCA art. 50 y custodia quedan para la revisión legal | H (textos) / M |
 | R-16 Registro de estrategias y RWA | Correcto, con un matiz | Ver N-4 sobre `asset_name`. Una estrategia desactivada no bloquea salidas (test `disabled_strategy_blocks_fund_not_exits`) | H |
 
@@ -1492,7 +1489,7 @@ Aplicados en el mismo PR que esta sección:
 
 ### A.7 Notas por rol
 
-- **P1:** N-1, N-2 (recorte completo del upstream), N-5, N-7 y N-8 en los tests de la factory. Los tests de 13.5. **R-14: no empujar código copiado de TW hasta tener el permiso en `NOTICE.md`.**
+- **P1:** N-1, N-2 (recorte completo del upstream), N-5, N-7 y N-8 en los tests de la factory. Los tests de 13.5.
 - **P2:** comprobación de la superficie del wasm (N-2), SAC del token (N-4) y hash del wasm (N-8) en `scripts/`; trustlines de `treasury` y del receptor del fee de TW; verificación off-chain de cada estrategia antes de `add_strategy`.
 - **P3:** `RelayPolicy` con N-3, verificación de wasm **y** registro con caché por dirección, WEB-3 v2 y los códigos de error de § 8.
 - **P4:** WEB-11 v2 y WEB-14 en la aceptación, feed filtrado por `contractId`, texto para `FactoryCall` ("No se ha podido registrar la fianza. Inténtalo de nuevo") y la estrategia con su nivel de riesgo y su APY "variable".

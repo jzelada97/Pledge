@@ -13,6 +13,31 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ---
 
+## 2026-10-25 · Plan A: solo la API de Trustless Work; el escrow propio queda como plan B
+- **Decisión:** las fianzas serán escrows **Single-Release v2 de Trustless Work**, creados y operados **solo con sus endpoints** (`beta.api.trustlesswork.com`, cabecera `x-api-key`). Trustless Work añadirá el depósito en DeFindex sobre esa misma API. **Esperamos a que lo publiquen** antes de activar nada propio.
+- **Motivo:** recomendación de Trustless Work. Si usamos su API tal cual, cuando añadan DeFindex la migración es mínima; cada capa propia (contratos, una API que imite la suya, endpoints inventados) habría que migrarla después.
+- **Plan A (principal):** `packages/trustless` (P1, #55 y #57). Cliente de su API v2 y mapeo de la fianza: un hito con 2 aprobaciones (casero e inquilino), la segunda aprueba y libera; el inquilino es el `receiver`; el staff resuelve las disputas. Lo que suponemos de DeFindex está aislado en `src/defindex.ts` (marcado `// SUPUESTO:`), para cambiar solo ese archivo cuando lo publiquen. `platformFee = 0`, porque TW lo cobra sobre el total.
+- **Plan B (reserva):** escrow fork de TW + `FianzaFactory` propios (`contracts/`). La factory está en `main` (#41); el camino feliz con DeFindex está en **#48, en borrador a propósito** (aprobado, CI en verde, probado por P2 contra el vault real de testnet). El camino de parada está en #58. **No se fusiona salvo que el equipo active el plan B**, por ejemplo si DeFindex no llega a tiempo para la demo.
+- **Actualización (decisión del equipo, #60):** se va con el plan A y **el plan B no se desarrolla más**. #48 y #58 se quedan en borrador, sin cerrar, solo como respaldo.
+- **Actualización (#64, guía de migración de TW a "TrustYield"):** la API con rendimiento es **TW v2 (TrustYield, con vault) con API key de v1**, en `trustless-backend-production.up.railway.app` (sus rutas no llevan `/v2`). Un rol por dirección, así que la doble aprobación es: el casero aprueba (`approve-milestone`) y el inquilino libera (`release-funds`). El rendimiento se consulta con `vault-position` y el sobrante de una disputa sale con `withdraw-remaining-funds`. `packages/trustless` se migra a esta API (lo hace P3 con `cross-area`, revisa P1). Datos de testnet (#62): wasm del escrow `828ae584…4b95`, vault de TW `CCG3G4YU…S7ZJ`, dirección de comisión de TW `GBPUACN7…AMUB`.
+- **Comisión de TW sobre la fianza (#62):** TW cobra su 0,3 % (y el `platformFee`) sobre **todo lo retirado**, capital incluido. En una prueba de 10 USDC el inquilino recuperó 9,97. Contradice "la fianza vuelve entera al inquilino" salvo que el rendimiento supere ese 0,3 % (unas 3 semanas al 6 % anual). **Pendiente del equipo:** pedir a TW que cobre solo sobre el rendimiento, compensarlo desde la plataforma o explicarlo en el pitch.
+- **Passkeys en el plan A (#60, #61, lo lleva P3):** una passkey (`C…`) puede tener roles (receptor, aprobador), pero la API no la acepta como `signer` (400 `invalid version byte`), porque el XDR que construye tiene como cuenta origen al firmante. Esas acciones habría que construirlas llamando al contrato directamente y patrocinarlas con nuestro Relayer (#62).
+- **Consecuencia:** las rutas de `apps/api` (#53) para aprobar y para `view`, `yield` y `preview-settlement` llaman a funciones del escrow que solo existen en #48, así que **fallan en testnet** mientras el plan B no se active. Crear, fondear y cancelar sí funcionan.
+- **Lo que el plan A no tiene** (frente al plan B): stop bond, perito pagado por el bond y timeouts (si el casero no responde, el inquilino no puede reclamar solo). Los roles se fijan al desplegar, así que el escrow se despliega cuando el inquilino acepta la invitación.
+- **Pendiente de confirmar con Trustless Work:** la forma exacta de los campos de DeFindex y si hay una versión nueva de la API; el calendario en testnet; si los escrows ya creados podrán activarlo; si la API key puede ir en el navegador o solo en un servidor; si su flujo de firmar XDR funciona con smart accounts de passkey; y si su SDK sirve fuera de React.
+- **Pendiente del equipo:** qué queda de `apps/api` en el plan A (como mucho, un proxy que guarde la API key).
+- **Sustituye en parte a:** "Vuelta al fork de Trustless Work" (el fork pasa a ser el plan B) y "API propia compatible con la Core API v2 de Trustless Work".
+- Decide: equipo (recomendación de Trustless Work) · Implementa: P1 (`packages/trustless`) · Revisa: P2
+
+## 2026-10-25 · Spike G2 de P2: vault propio en testnet, USDC de prueba y comisiones
+- **Vault propio desplegado** con la factory de DeFindex (`CDSCWE4G…4A32`) en testnet: **`CDKNUOYYDNSHVOKVT7XNQAYUQ7U4OGNJ4Z5DGXY5QW6AIYG6VUPKDOQO`** ("Fianzas USDC Vault", FZUSDC). Activo BlendUSDC `CAQCFVLO…RCJU` (`USDC:GATALTGT…5V56`), estrategia `USDC_blend_strategy` `CALLOM5I…FSUY`, router Soroswap `CCJUD55A…7BRD`, `upgradable = false`, `vault_fee = 100` bps. Roles: emergency, manager y rebalance = `fianzas-admin` (`GBKASLNH…XYQ7`); fee receiver = `fianzas-treasury` (`GBNOMT2V…L4N7`).
+- **Para el escrow basta `deposit(…, invest = true)`.** Comprobado: el **primer** depósito del vault se queda ocioso hasta que el manager hace un `rebalance` con `Invest` (lo hizo P2 con 100 USDC); desde entonces los depósitos con `invest = true` van directos a la estrategia (10 USDC más → idle 0, invertido 110,00 USDC) y el rendimiento ya se acumula. El escrow no necesita el rol de rebalance.
+- **El vault público `usdc_paltalabs_vault` no sirve**: 33.249 USDC ociosos, 0 invertidos (rinde 0 %) y manager de PaltaLabs.
+- **USDC de prueba:** el faucet de Blend testnet (`GET …/getAssets?userId=G…` con `Origin: https://testnet.blend.capital`) **solo da BLND, wETH y wBTC**. El USDC se compra en **Soroswap testnet**, par XLM/USDC `CBR76WMT…YM3V` (`swap_exact_tokens_for_tokens`): 5.000 XLM → 639,87 USDC. Liquidez restante ~1.000 USDC, así que `scripts/fund` reparte con cuidado y las cuentas se refondean con friendbot.
+- **Base de la comisión de protocolo (cierra la pendiente):** DeFindex cobra el **20 % de la comisión del vault**, no de las ganancias (`distribute_fees`: `defindex_fee = locked_fee × protocol_rate / 10000`; el resto a nuestro fee receiver). Con `vault_fee = 1 %`, de 100 USDC de ganancia el vault retiene 1 USDC: 0,80 a nuestra tesorería y 0,20 a DeFindex. El ingreso principal sigue siendo el `platform_fee_bps` del escrow.
+- **Identidades de despliegue** (CLI local de P2, testnet, fondeadas): `fianzas-admin` GBKASLNH25VETEB5MGCLPIX5DG7SY5PLFOBKMIWMTRFJVQNNJAOHXYQ7 · `fianzas-staff` GAO7MHQHL6LAGUSFGTSDVMISV4UILI33PGOSJEBBR5XB5OXBXKJDR3C2 · `fianzas-treasury` GBNOMT2VMMNGWPENBY2FP66ASRMUVSJRCJZWIZ2ENZ45OYJKSL67L4N7 · `fianzas-faucet` GDHIKULVY3XBBWE53GZNMABKZIHO6G6TLKMUQLY4ODQ2BHFRKWBFYDC3 · `fianzas-read` GDQQBJ4Y6V24VOROSCFZQXKA7IAIG5HETIQMLC36GQ3KF6KAIHP4PRLX.
+- Decide: P2 · Revisa: P1 (deposit desde el escrow), P3 (`deployments/testnet.json`)
+
 ## 2026-10-25 · El rendimiento lo fija la jurisdicción: en el MVP (Portugal), al casero
 - **Decisión:** quién se lleva el rendimiento neto no lo elige el casero en cada fianza: depende de las normas de cada jurisdicción. El MVP y el pitch son para **Portugal**, con **todo el rendimiento neto para el casero** (`tenant_yield_bps = 0`). La fianza sigue volviendo entera al inquilino y el fee de plataforma sigue saliendo solo del rendimiento.
 - **Cambio de interfaz propuesto (#16):** `tenant_yield_bps` sale de `FianzaParams` y pasa a `GlobalConfig` (la fija el admin; demo 0). La factory la copia en `Terms.tenant_yield_bps`, así que el escrow, `split()`, `Settlement` y los eventos no cambian. `deployments/testnet.json` lleva `tenantYieldBps` y WEB-14 lo comprueba antes de fondear.
@@ -28,9 +53,8 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - Decide: P4 · Implementa: P4
 
 ## 2026-10-25 · Vuelta al fork de Trustless Work (sustituye a "Escrow propio")
-- **Decisión:** el escrow vuelve a ser un **fork del Single-Release v2 de Trustless Work** (`single-release-develop-v2` @ `1d22d0c`, con v1 @ `f0b706e` como plan B), con el permiso explícito de Trustless Work para copiarlo y modificarlo. Se cambian los roles y se añade el movimiento escrow → DeFindex → escrow → reparto. Se recupera `NOTICE.md` con el permiso.
-- **Motivo:** decisión del equipo. Trustless Work ha dado permiso y su V2 aún no está publicada. Partir de su código auditado (v1, Runtime Verification) es mejor que escribirlo desde cero, y el pitch puede decir "construido sobre Trustless Work, con permiso".
-- **Condición:** el permiso tiene que cubrir un **repositorio público** y quedar registrado en `NOTICE.md` (enlace, fecha y persona de Trustless Work).
+- **Decisión:** el escrow vuelve a ser un **fork del Single-Release v2 de Trustless Work** (`single-release-develop-v2` @ `1d22d0c`, con v1 @ `f0b706e` como plan B). Se cambian los roles y se añade el movimiento escrow → DeFindex → escrow → reparto. Se recupera `NOTICE.md` con la atribución.
+- **Motivo:** decisión del equipo. La V2 de Trustless Work aún no está publicada. Partir de su código auditado (v1, Runtime Verification) es mejor que escribirlo desde cero, y el pitch puede decir "construido sobre Trustless Work".
 - **Sustituye a:** "Escrow propio, sin fork de Trustless Work" (PR #5, revertido).
 - Decide: equipo · Implementa: P1
 
@@ -44,7 +68,7 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - **Decisión:** DeFindex cobra **sobre lo generado en su pool**, y esa comisión se reparte entre DeFindex (`defindex_protocol_fee`) y nosotros (`vault_fee`, que va al `fee_receiver` del vault, es decir, a la tesorería). Es una **fuente de ingresos adicional** a nuestro `platform_fee_bps` del escrow.
 - **Vault propio también en testnet:** lo crea P2 con la factory de DeFindex sobre `USDC_blend_strategy`, y la plataforma es su manager (`config.vault_manager = Some(...)` también en testnet). `usdc_paltalabs_vault` queda solo como plan B del spike.
 - **Fijado al crear:** el factory lee `get_fees()` y guarda `defindex_vault_fee_bps` y `defindex_protocol_fee_bps` en los `Terms`. El vault ya las descuenta del rendimiento, así que `split()` no las vuelve a restar. `fund_escrow` rechaza el fondeo si la comisión ha subido (`VaultFeeChanged`). Una subida nunca bloquea un retiro.
-- **Pendiente:** confirmar en el spike sobre qué base exacta calcula DeFindex su comisión de protocolo. En el PoC se fijarán los números: `vault_fee` y `platform_fee_bps` a la vez, para no cobrar dos veces lo mismo sin querer.
+- **Confirmado en el spike:** la comisión de protocolo es el 20 % de la comisión del vault (ver "Spike G2 de P2"). En el PoC se fijarán los números: `vault_fee` y `platform_fee_bps` a la vez, para no cobrar dos veces lo mismo sin querer.
 - Decide: equipo · Implementa: P2 (vault) y P1 (Terms)
 
 ## 2026-10-25 · Kit de passkeys: smart-account-kit + Relayer propio
@@ -60,10 +84,10 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 ## 2026-10-25 · Escrow propio, sin fork de Trustless Work (**sustituida** por "Vuelta al fork de Trustless Work")
 - **Decisión:** el escrow se escribe **desde cero**. No se copia ni se modifica código de Trustless Work. Se mantienen la factory, un contrato por fianza, el vault de DeFindex y todas las firmas de `docs/INTERFACES.md`.
 - **Consecuencias:**
-  - No hay `NOTICE` de TW, ni permiso que registrar, ni cabeceras de origen.
+  - No hay `NOTICE` de TW ni cabeceras de origen.
   - Desaparece el fee de TW (`tw_fee_bps`, `tw_fee_receiver`, `Settlement.to_tw`) y `get_roles()`.
   - El pitch no dice "construido sobre Trustless Work".
-- **Motivo:** evita depender de un permiso sin licencia publicada en un repositorio público, y quita código que no necesitamos (milestones, reparto libre, funciones de admin).
+- **Motivo:** quita código que no necesitamos (milestones, reparto libre, funciones de admin).
 - **Sustituye a:** "Escrow: fork de Trustless Work + DeFindex + factory" (más abajo).
 - Decide: equipo · Implementa: P1
 
@@ -93,7 +117,7 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ## 2026-10-25 · Escrow: fork de Trustless Work + DeFindex + factory (vigente de nuevo; ver "Vuelta al fork")
 - **Decisión:**
-  - El escrow parte del contrato de **Trustless Work** (Single-Release), con su permiso explícito para copiarlo y modificarlo (ver `NOTICE.md`).
+  - El escrow parte del contrato de **Trustless Work** (Single-Release) (ver `NOTICE.md`).
   - Lo modificamos para que, al fondear, el dinero vaya a un vault de DeFindex, y para que al liberar o resolver se retire y se reparta.
   - Un contrato **`FianzaFactory`** crea un escrow por fianza, con el patrón de despliegue `tw_new_single_release_escrow` que ya trae Trustless Work. También lleva un registro de estrategias, la configuración global y los índices por casero e inquilino.
 - **Descartado:**
@@ -131,11 +155,10 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 - Decide: equipo
 
 ## Pendientes en G2 (hora 3)
-- [ ] Base del fork de Trustless Work: v2 `1d22d0c` o v1 `f0b706e` (P1)
-- [ ] Vault propio de DeFindex en testnet sobre `USDC_blend_strategy` y cómo fondearlo (P2)
+- [x] Base del fork de Trustless Work (P1): v2 `single-release-develop-v2` @ `1d22d0c`. Compila con `soroban-sdk 28.0.0` y nuestro toolchain (Rust 1.99.1, stellar-cli 28.1.0), los 57 tests upstream pasan y el wasm de release pesa 35 910 bytes. No hace falta el plan B (v1).
+- [x] Vault propio de DeFindex en testnet sobre `USDC_blend_strategy` y cómo fondearlo (P2): `CDKNUOYY…KDOQO`, USDC vía Soroswap
 - [ ] ¿`@trustless-work/escrow-js` acepta nuestra `baseUrl` y los campos extra? (P2)
-- [ ] Base de cálculo de la comisión de protocolo de DeFindex (P2)
+- [x] Base de cálculo de la comisión de protocolo de DeFindex (P2): 20 % de la comisión del vault
 - [x] Kit de passkeys: smart-account-kit (P3)
 - [ ] Anchor: testanchor con SEP-45 o ramp simulado (P3)
 - [ ] Quién asume una pérdida del vault más allá del rendimiento (equipo, antes de G1)
-- [ ] Registrar en `NOTICE.md` el permiso de Trustless Work para un repo público (equipo, antes de copiar el código)

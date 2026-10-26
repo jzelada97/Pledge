@@ -1,0 +1,18 @@
+# Derived from Trustless-Work/trustlesswork-smart-contract-stellar@1d22d0c (contracts/escrow/Cargo.toml), modified. See contracts/escrow/NOTICE.md
+[package]
+name = "escrow"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+# FIANZAS: versiones y perfiles en el Cargo.toml raíz del workspace (área deps, P2).
+[dependencies]
+soroban-sdk = { workspace = true }
+soroban-token-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+soroban-token-sdk = { workspace = true }

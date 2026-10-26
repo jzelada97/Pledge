@@ -3,7 +3,7 @@
 Escrow de **una fianza**. Es un **fork del Single-Release de Trustless Work** con depósito en DeFindex. Lo despliega `contracts/factory/`. Firmas: `docs/INTERFACES.md`. Diseño y cambios por archivo: `.kiro/pipeline/architecture.md`.
 
 ## Origen del código
-- Base: `Trustless-Work/trustlesswork-smart-contract-stellar` (la rama y el SHA se deciden en G2 y se anotan en `NOTICE.md`), con permiso de Trustless Work.
+- Base: `Trustless-Work/trustlesswork-smart-contract-stellar` (la rama y el SHA se deciden en G2 y se anotan en `NOTICE.md`).
 - Conserva la estructura original (`core/`, `modules/fee`, `modules/math`, `storage/`, `events/`). Nuestro código nuevo va en módulos propios, por ejemplo `modules/vault/`, `modules/split/`, `core/stop_bond.rs` y `core/timeout.rs`.
 - Marca **cada** cambio sobre un archivo original con `// FIANZAS: <motivo>`.
 

@@ -55,12 +55,21 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: wasm32v1-none
       - uses: Swatinem/rust-cache@v2
         if: hashFiles('Cargo.toml') != ''
-      - name: Contratos (fmt, clippy, tests)
+      - name: Stellar CLI
         if: hashFiles('Cargo.toml') != ''
+        # soroban-sdk 28 solo compila contratos con `stellar contract build` (CLI >= 25.2).
+        uses: stellar/stellar-cli@v28.1.0
+      - name: Contratos (fmt, wasm, clippy, tests)
+        if: hashFiles('Cargo.toml') != ''
+        # El wasm se compila ANTES de los tests: la factory importa el wasm del escrow
+        # (contractimport!) desde target/wasm32v1-none/release/.
         run: |
           cargo fmt --all -- --check
+          stellar contract build
+          ls -la target/wasm32v1-none/release/*.wasm
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
       - uses: pnpm/action-setup@v4
@@ -68,7 +77,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: hashFiles('pnpm-lock.yaml') != ''
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
       - name: Front (typecheck, lint, tests)
         if: hashFiles('pnpm-lock.yaml') != ''

@@ -11,7 +11,7 @@
 
 | # | Antes (v1 de este documento) | Ahora | Justificación |
 |---|---|---|---|
-| C-1 | **Opción A**: escrow propio singleton y Trustless Work solo como referencia de roles | **Fork del contrato Single-Release V2 de Trustless Work**, con su permiso explícito para copiar y modificar | El equipo tiene permiso de TW. Los motivos para rechazar TW (falta de timeout on-chain, fee sobre el bruto, un solo receptor, ausencia de rendimiento y flujo de XDR sin documentar para passkeys) se referían a **usar TW tal como está a través de su API**. Con un fork se añaden esas piezas en el código y se llama al contrato directamente con nuestros bindings, así que la API de TW y su XDR dejan de importar. Se gana la estructura probada de TW (roles, quórum, validadores, matemática segura, eventos), un pitch honesto ("construido sobre Trustless Work") y la alineación con su V2. |
+| C-1 | **Opción A**: escrow propio singleton y Trustless Work solo como referencia de roles | **Fork del contrato Single-Release V2 de Trustless Work** | Los motivos para rechazar TW (falta de timeout on-chain, fee sobre el bruto, un solo receptor, ausencia de rendimiento y flujo de XDR sin documentar para passkeys) se referían a **usar TW tal como está a través de su API**. Con un fork se añaden esas piezas en el código y se llama al contrato directamente con nuestros bindings, así que la API de TW y su XDR dejan de importar. Se gana la estructura probada de TW (roles, quórum, validadores, matemática segura, eventos), un pitch honesto ("construido sobre Trustless Work") y la alineación con su V2. |
 | C-2 | Un contrato singleton con todas las fianzas | **Un contrato escrow por fianza**, desplegado por **`FianzaFactory`** | Es el modelo de TW (`tw_new_single_release_escrow`). Cada fianza queda aislada: un fallo o un bloqueo afecta a una sola, y desaparece el "honeypot" del singleton (security § 6.1 #12). Coste: aparecen direcciones dinámicas (lista blanca del Relayer, eventos y bindings), resueltas en § 6.4 y § 8. |
 | C-3 | `yield-adapter` de P2 entre el escrow y DeFindex o Blend | **El escrow habla directamente con un vault de DeFindex** (`modules/vault/`) mediante un subconjunto de su interfaz. `mock-vault` implementa ese mismo subconjunto. `yield-adapter` queda solo como **plan C** | Hay un salto y un contrato menos, y desaparece el libro de shares intermedio y su ataque de inflación. Las shares del vault son un token SEP-41 que se mide por diferencia de balance. P2 libera unas 4 h, que dedica a scripts, e2e y el spike del vault. |
 | C-4 | Fee de plataforma sobre el rendimiento; sin fee de TW | Fee de plataforma (`platform_fee_bps`) **y** parámetro de fee de TW (`tw_fee_bps`), **ambos solo sobre el rendimiento** y configurables. **En el MVP, `tw_fee_bps = 0`** (decisión del equipo): el código y los tests lo soportan, pero no se cobra. El destino del fee de TW se fija en la configuración, **nunca** por argumento | Cumple la decisión 3 del equipo. El upstream recibe `trustless_work_address` como **argumento del llamante** en `release_funds`, `resolve_dispute` y `withdraw_remaining_funds`, y el fork lo corrige. Activar el 0,3 % sobre el rendimiento queda **pendiente de acordar con TW** (Q-16) y se hace con `set_config`, sin redeploy, solo para fianzas nuevas. |
@@ -58,17 +58,14 @@
 
 - **Origen:** `contracts/escrow/src/**` de v2 @ `1d22d0c` (sin `tests/`, salvo `tests/helpers.rs` como plantilla) se copia a **`contracts/escrow/src/**`** del monorepo (área de P1). `Cargo.toml` del crate se adapta a nuestro workspace.
 - **Factory:** `contracts/factory/` es código nuevo de P1, **derivado** del patrón de `tw_new_single_release_escrow` (despliegue con `env.deployer()` y wasm hash aprobado).
-- **Licencia:** el repositorio de TW **no declara licencia** (la API de GitHub devuelve `license: null` y no hay `LICENSE`). Sin licencia rigen todos los derechos reservados, así que **el único título para copiar es el permiso escrito de TW**. Como la entrega exige un repositorio **público** (G5), el permiso tiene que cubrir de forma explícita la publicación del código modificado (Q-17).
-- **`NOTICE.md` en la raíz** (como fija ya `CLAUDE.md`; área compartida con `/lock harness`; lo redacta P1 en G0), con:
+- **`contracts/escrow/NOTICE.md`** (lo redacta P1 en G0), con:
   1. Origen: repositorio, rama, commit `1d22d0c1b9c5788f4fd7184e42024bbe10303756` y fecha.
-  2. Permiso: quién lo concede en TW, la fecha, el alcance (copiar, modificar, publicar y, si lo cubre, el uso comercial) y un enlace o cita del permiso (issue, email archivado en `docs/`).
-  3. "© Trustless Work. Usado y modificado con permiso". Las modificaciones son del equipo.
-  4. Lista de archivos copiados, modificados, eliminados y nuevos (la tabla de § 5).
-  5. Que **no** se aplica al código de TW ninguna licencia abierta del resto del repositorio salvo que TW la autorice.
-  6. Que el fork **no está auditado** y difiere del upstream.
-- `contracts/escrow/` y `contracts/factory/` no llevan NOTICE propio: su `Cargo.toml` (campo `description`) y un `README.md` de carpeta remiten al `NOTICE.md` de la raíz.
-- **Cabecera en cada archivo copiado:** `// Derived from Trustless-Work/trustlesswork-smart-contract-stellar@1d22d0c (<ruta>), modified. See /NOTICE.md`. **Cada cambio nuestro se marca con `// FIANZAS:`** (regla de `CLAUDE.md`), para poder revisar el diff contra el original.
-- `README.md` (área libre) enlaza el `NOTICE.md`.
+  2. "© Trustless Work". Las modificaciones son del equipo.
+  3. Lista de archivos copiados, modificados, eliminados y nuevos (la tabla de § 5).
+  4. Que el fork **no está auditado** y difiere del upstream.
+- **`contracts/factory/NOTICE.md`**: una línea que remite al NOTICE del escrow para el patrón derivado.
+- **Cabecera en cada archivo copiado:** `// Derived from Trustless-Work/trustlesswork-smart-contract-stellar@1d22d0c (<ruta>), modified. See contracts/escrow/NOTICE.md`. **Cada cambio nuestro se marca con `// FIANZAS:`** (regla de `CLAUDE.md`), para poder revisar el diff contra el original.
+- `README.md` (área libre) enlaza `contracts/escrow/NOTICE.md`.
 - **Comunicación a TW** (responsable: P1; no se menciona en el pitch): avisar en privado de que `trustless_work_address` llega como argumento del llamante en `release_funds`, `resolve_dispute` y `withdraw_remaining_funds` (v1 y v2).
 
 ---
@@ -115,7 +112,7 @@ stellar-fianzas/
 ├── contracts/
 │   ├── escrow/                        (P1) FORK de TW single-release-develop-v2 @ 1d22d0c
 │   │   ├── Cargo.toml                 crate-type ["cdylib"]; dev-deps: soroban-sdk testutils, mock-vault (rlib)
-│   │   ├── README.md                  remite a /NOTICE.md (permiso de TW, origen, lista de cambios)
+│   │   ├── NOTICE.md                  origen en TW, atribución y lista de cambios
 │   │   └── src/
 │   │       ├── lib.rs                 [FORK] árbol de módulos
 │   │       ├── contract.rs            [FORK] entrypoints de la fianza (§ 6.2)
@@ -997,7 +994,7 @@ sequenceDiagram
 | **G3 (H10–H12)** | Fusiona; avisa a P2 | Integración: redeploy, bindings y `deployments.json`. **Fianza larga** con `usdc_fixed` (o `usdc_mock`) y `/api` en el dominio definitivo | Cambio a real (`signAndSendBuilt`); cuentas demo en el dominio definitivo | `NEXT_PUBLIC_USE_FAKES=0`; camino feliz |
 | **Fase 5 (H12–H16)** | (H14–H16) `stop` + bond, `assign_expert`, `record_report`, `resolve` con `stop_justified`, `claim_after_timeout`, `claim_after_review_timeout` y tests de security § 12.9 | (H12–H14) `e2e/stop.mjs` (los dos valores de `stop_justified`), `e2e/timeout.mjs`, `e2e/review-timeout.mjs` y cuenta de staff. API: `stop`, `assign-expert`, `record-report`, `resolve`, `claim-*`, `preview-settlement` y los `501` con `replacement` | (H14–H16) Ramp simulado | (H12–H14) Backoffice con `stop_justified` explícito |
 | **G4 (H16–H22)** | `create_fianzas_batch` **(Could)**, bordes temporales y `evil_vault` | Redeploy final, AC-13 (≤ 10 min). API: `/escrows*`, `/financial`, `/events`, API keys y prueba con `@trustless-work/escrow-js` cambiando la `baseUrl` | Robustez | Timeout y revisión vencida en la UI, feed de eventos, `check-copy.mjs` |
-| **G5 (H22–H28)** | Checklist de seguridad (contrato y factory) + `NOTICE.md` final | README con diagrama y NOTICE | Móviles listos | Pitch ("construido sobre Trustless Work, con permiso"), vídeo |
+| **G5 (H22–H28)** | Checklist de seguridad (contrato y factory) + `NOTICE.md` final | README con diagrama y NOTICE | Móviles listos | Pitch ("construido sobre Trustless Work"), vídeo |
 
 **Carga:** P1 es el rol más cargado y no toca la API. P2 absorbe la API (unas 6–8 h repartidas entre H2 y H22) gracias a las 4 h que libera `yield-adapter`; asume además todos los e2e y puede proponer tests de la factory con la etiqueta `cross-area` y la aprobación de P1. P4 añade un solo archivo (`apps/web/app/api/[[...path]]/route.ts`) y consume `@fianzas/api/client`; hasta H5 usa `FakeWallet` y fixtures. **Plan de degradación de la API:** si en H10 los builds no están listos, el front sigue con bindings + `signAndSend` (diseño anterior) y la API queda con relay, ramp y lecturas; las rutas TW de solo lectura y `/escrows*` son lo último que se recorta de la API. **Recortes, en orden:** (0) `create_fianzas_batch`; (0b) `/escrows/financial`, `/events`, API keys y `/graphql` de la API; (1) anchor real; (2) UI de los timeouts (se quedan en el contrato y los tests); (3) backoffice → script; (4) vault real → `usdc_mock`. **Nunca se recortan:** los tests del contrato y de la factory, la factory misma, el relay de la API (es el único camino patrocinado), el flujo con passkey ni el camino feliz en testnet.
 
@@ -1016,7 +1013,7 @@ sequenceDiagram
 11. **R-11 Auth del vault.** `authorize_as_current_contract` debe autorizar exactamente `token.transfer(escrow, vault, amount)`, y `deposit` con `amounts_min = [amount]`. Test sin `mock_all_auths` y con `evil_vault`.
 12. **R-12 Presupuesto.** `get_fianzas` no llama al vault. `create_fianzas_batch` limitado por la medida del spike. Las transacciones son atómicas.
 13. **R-13 Bond.** Se aplican OC-1 a OC-4. OC-5 pasa a [H] gracias a `claim_after_review_timeout`. El bond queda líquido fuera del vault. Invariante por instancia: `balance(escrow) == bond_held + (principal líquido si NoYield)`.
-14. **R-14 Licencia y permiso.** Repositorio público con código de TW sin licencia: el permiso escrito tiene que cubrirlo (Q-17).
+14. **R-14** (retirado).
 15. **R-15 Regulación.** MiCA art. 50 (rendimiento sobre un EMT como el USDC) y custodia. Además, el aviso de riesgo de `usdc_etherfuse` no puede sonar a recomendación de inversión. Un token RWA (USDY o EUTBL) puede ser un instrumento financiero (MiCA o PRIIPs). Nunca se usa "0 riesgo" ni "sin riesgo" en ningún texto.
 16. **R-16 Registro de estrategias y tokens RWA.** Tokens falsos con el mismo código (al menos 10 USDY falsos): se fija `asset_name` (CÓDIGO:EMISOR) y la dirección del SAC. Los emisores con clawback o revocable (USDY) pueden congelar o recuperar saldos de una estrategia: es un riesgo de emisor que hay que divulgar y que, por ahora, excluye estas estrategias del MVP. Una estrategia desactivada no debe bloquear salidas (test). El admin que añade un vault malicioso solo afecta a fianzas nuevas, y el script de verificación off-chain y el alta en dos pasos son el control (R-2).
 17. **R-17 API y builds sin auth.** Coste de simulaciones (DoS de la RPC o de Channels): límites por IP y por key, caché y `Origin` propio en relay y ramp. Un build manipulado (API comprometida) que devuelva otro árbol de auth: **WEB-3 sigue siendo obligatorio en el cliente**, que verifica raíz, función, argumentos y subinvocaciones antes de pedir la passkey. La API no es de confianza para el contenido de lo que se firma.
@@ -1052,7 +1049,6 @@ sequenceDiagram
 |---|---|---|---|
 | Q-13 | Déficit de principal tras compensar con el rendimiento: ¿lo absorbe el inquilino, el casero o se reparte a prorrata? | El inquilino, después de la deducción | Equipo, antes de G1 |
 | **Q-16** | ¿Se activa el 0,3 % de TW **solo sobre el rendimiento**? ¿A qué dirección? | **Fuera del MVP: `tw_fee_bps = 0`** y `tw_fee_receiver = None`. El parámetro existe, los tests cubren 0 y 30, y se activa con `set_config` (solo para fianzas nuevas) cuando TW lo acuerde | P1 con TW, después de la hackatón |
-| **Q-17** | ¿El permiso de TW cubre el repositorio **público**, la licencia de nuestras modificaciones y un uso comercial futuro? | Solo hackatón y repositorio público, documentado en `NOTICE.md` | P1, G0 |
 | **Q-18** | ¿Vault de testnet: `usdc_paltalabs_vault` o uno propio? | El que pase el spike; si ninguno, `usdc_mock` | P2, G2 |
 | **Q-19** | ¿Mainnet: vault propio de DeFindex o de terceros? ¿Quién lleva los roles del vault? | Propio, con managers en multisig | Producto, después de la hackatón |
 | **Q-20** | RWA de verdad (§ 7.1): ¿puede un contrato tener USDY o EUTBL? ¿Qué liquidez de salida hay en Stellar? ¿Cómo se trata el clawback del emisor de USDY? | Roadmap, sin implementar. USDY: `auth_required = false`, pero con clawback y revocable; el mint exige KYC. EUTBL: sin verificar | Producto |
