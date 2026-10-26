@@ -17,7 +17,7 @@ type Step = "review" | 0 | 1 | 2 | "paid";
 
 // iOS onboarding style: first the terms (server-rendered, passed as `review`), then one full screen per step
 // (sign in or create account → add money from the bank → accept and pay), each with its action at the bottom.
-export function InvitationFlow(props: { amount: string; amountDec: string; landlord: string; termsMatch: boolean; simulatedRamp: boolean; review: ReactNode }) {
+export function InvitationFlow(props: { amount: string; amountDec: string; landlord: string; endTs?: number; termsMatch: boolean; simulatedRamp: boolean; review: ReactNode }) {
   const { t } = useI18n();
   const x = t.invitation;
   const [step, setStep] = useState<Step>("review");
@@ -45,7 +45,7 @@ export function InvitationFlow(props: { amount: string; amountDec: string; landl
       <Screen ref={heading} icon={CircleCheckIcon} iconClass="bg-success/10 text-success" title={x.paid.title} description={x.paid.body}>
         <BottomBar>
           <Button asChild size="lg">
-            <Link href="/demo">{x.paid.cta}</Link>
+            <Link href="/tenant">{x.paid.cta}</Link>
           </Button>
         </BottomBar>
       </Screen>
@@ -97,7 +97,7 @@ export function InvitationFlow(props: { amount: string; amountDec: string; landl
                 onDone={() => setStep("paid")}
                 action={async () => {
                   // Plan A: el escrow de TW se crea ahora que se conoce la cuenta del inquilino, y después se deposita.
-                  const contractId = await createFianza(props.landlord, tenant!, props.amountDec);
+                  const contractId = await createFianza(props.landlord, tenant!, props.amountDec, props.endTs);
                   await fundFianza(contractId, tenant!, props.amountDec);
                 }}
               />

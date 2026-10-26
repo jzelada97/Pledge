@@ -28,13 +28,13 @@ const schemaFor = (t: { reasonMin: string; reasonMax: string }) =>
   z.object({ reason: z.string().trim().min(10, t.reasonMin).max(1000, t.reasonMax) });
 
 // Stop release (plan A, Trustless Work): opens a dispute. There's no good-faith deposit; the staff decides.
-export function StopDialog() {
+export function StopDialog({ action, onDone }: { action?: () => Promise<unknown>; onDone?: () => void } = {}) {
   const { t } = useI18n();
   const s = t.landlord.stop;
   const schema = useMemo(() => schemaFor(s), [s]);
   const [open, setOpen] = useState(false);
   const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { reason: "" } });
-  const { phase, run, busy, phaseText } = useSign({ success: s.success });
+  const { phase, run, busy, phaseText } = useSign({ success: s.success, action, onDone });
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>

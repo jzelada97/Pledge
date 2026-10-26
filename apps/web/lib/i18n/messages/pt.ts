@@ -307,6 +307,20 @@ export const pt: Messages = {
     paid: { title: "A sua caução está paga", body: "Recebe-a de volta, com o rendimento, quando o seu senhorio aprovar e você a libertar.", cta: "Ver a minha caução" },
   },
 
+  live: {
+    signIn: "Entrar com Face ID",
+    signedIn: "Sessão iniciada",
+    landlordLead: "As suas cauções estão na sua conta com passkey. Entre para as ver e enviar convites.",
+    tenantLead: "Entre com a conta que criou ao pagar a sua caução.",
+    contract: "Contrato",
+    claimableFrom: "Pode reclamá-la a partir de",
+    claimTitle: "O seu senhorio não respondeu",
+    claimBody: "O prazo passou sem aprovação nem disputa. Pode reclamar a sua caução por inteiro.",
+    claimTodo: "Já pode reclamá-la",
+    claim: "Reclamar a minha caução",
+    claimed: "Reclamada. Vai a caminho da sua conta.",
+    claimPending: "Reclamação enviada. A equipa da Pledge confirma a devolução.",
+  },
   errors: {
     title: "Algo correu mal",
     body: "Não foi possível carregar esta página. Verifique a ligação e tente novamente.",

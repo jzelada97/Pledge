@@ -1,14 +1,25 @@
+"use client";
+
 import { LandlordShell } from "@/components/landlord-shell";
-import { getI18n } from "@/lib/i18n/server";
+import { LiveProvider, LoginGate } from "@/components/live-provider";
+import { useI18n } from "@/lib/i18n/client";
 import { landlordList } from "@/lib/landlord-list";
 
-export const dynamic = "force-dynamic"; // "in N days" must be computed per request, not at build time
-
-export default async function LandlordLayout({ children }: { children: React.ReactNode }) {
-  const { items, filters, summary } = landlordList(await getI18n());
+// Panel del casero con datos reales: la cuenta con passkey de este navegador y sus escrows del plan A
+// (get-escrows-by-role, approver). Sin cuenta, la pantalla de entrada ocupa el panel de detalle.
+export default function LandlordLayout({ children }: { children: React.ReactNode }) {
+  const i18n = useI18n();
   return (
-    <LandlordShell items={items} filters={filters} summary={summary}>
-      {children}
-    </LandlordShell>
+    <LiveProvider role="landlords">
+      {(live) => {
+        const { items, filters, summary } = landlordList(i18n, live.rows ?? []);
+        const gate = live.ready && !live.address ? <LoginGate lead={i18n.t.live.landlordLead} /> : undefined;
+        return (
+          <LandlordShell items={items} filters={filters} summary={summary} gate={gate}>
+            {!live.ready ? null : (gate ?? children)}
+          </LandlordShell>
+        );
+      }}
+    </LiveProvider>
   );
 }

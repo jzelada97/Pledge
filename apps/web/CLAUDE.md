@@ -3,6 +3,8 @@
 Panel del casero (desktop) y flujo del inquilino (móvil, mobile-first). **Solo plan A** (`docs/DECISIONS.md`): el escrow es de Trustless Work y se maneja por `apps/api`.
 
 ## Reglas
+- **Datos reales (26-oct):** `/landlord`, `/tenant`, la invitación `/i/1?l=&a=&e=` y `/demo` hablan con la API de `apps/api` (montada en `/api`) a través de `lib/pledge.ts` y firman con la passkey (`packages/wallet`). `lib/live.ts` adapta la vista de la API a la forma `DepositRow` que dibujan las pantallas; `components/live-provider.tsx` lleva la cuenta y las listas. `lib/fixtures.ts` solo queda para la portada y el ejemplo de rendimiento de `/landlord/new`. No vuelvas a los mocks.
+- Entrar = `LoginGate` (reconecta la passkey guardada o crea la cuenta). Las passkeys solo funcionan en `localhost` o HTTPS: ver `docs/DEPLOY.md`.
 - Habla con el escrow solo a través de `apps/api` (`/api/fianzas/v1/…`) y firma solo con `packages/wallet`. `packages/bindings` es del plan B (descartado): no lo uses.
 - Direcciones de contratos: de `deployments/testnet.json`, nunca escritas a mano.
 - Lenguaje de usuario: "fianza", "aprobar devolución", "parar devolución", "rendimiento". Nunca "wallet", "seed", "XLM", "gas", "transacción".

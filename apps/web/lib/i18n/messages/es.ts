@@ -307,6 +307,20 @@ export const es: Messages = {
     paid: { title: "Tu fianza está pagada", body: "La recuperarás, con su rendimiento, cuando tu casero apruebe y tú la liberes.", cta: "Ver mi fianza" },
   },
 
+  live: {
+    signIn: "Entrar con Face ID",
+    signedIn: "Dentro",
+    landlordLead: "Tus fianzas están en tu cuenta con passkey. Entra para verlas y enviar invitaciones.",
+    tenantLead: "Entra con la cuenta que creaste al pagar tu fianza.",
+    contract: "Contrato",
+    claimableFrom: "Puedes reclamarla desde el",
+    claimTitle: "Tu casero no ha respondido",
+    claimBody: "Ha pasado el plazo sin aprobación ni disputa. Puedes reclamar tu fianza entera.",
+    claimTodo: "Ya puedes reclamarla",
+    claim: "Reclamar mi fianza",
+    claimed: "Reclamada. Va de camino a tu cuenta.",
+    claimPending: "Reclamación enviada. El equipo de Pledge confirma la devolución.",
+  },
   errors: {
     title: "Algo ha fallado",
     body: "No hemos podido cargar esta página. Revisa tu conexión y vuelve a intentarlo.",

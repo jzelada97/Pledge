@@ -68,9 +68,9 @@ export async function addTestMoney(address: string, amount: string): Promise<voi
   await anchor.startDeposit(address, "USDC", amount);
 }
 
-/** Crea el escrow de TW (firma la tesorería en el servidor). */
-export async function createFianza(landlord: string, tenant: string, amount: string): Promise<string> {
-  const r = await api<{ contractId: string | null }>("/api/fianzas/v1/fianzas", { landlord, tenant, amount });
+/** Crea el escrow de TW (firma la tesorería en el servidor). `endTs` fija el plazo de reclamación (#115). */
+export async function createFianza(landlord: string, tenant: string, amount: string, endTs?: number): Promise<string> {
+  const r = await api<{ contractId: string | null }>("/api/fianzas/v1/fianzas", { landlord, tenant, amount, ...(endTs ? { endTs } : {}) });
   if (!r.contractId) throw new Error("La API no devolvió el escrow");
   knownEscrows.add(r.contractId);
   return r.contractId;
@@ -113,3 +113,28 @@ export type FianzaView = Record<string, unknown> & { contractId: string; status:
 
 export const listFianzas = (role: "landlords" | "tenants", address: string) =>
   api<{ data: FianzaView[] }>(`/api/fianzas/v1/${role}/${address}/fianzas`).then((r) => r.data);
+
+export const getFianza = (contractId: string) => api<FianzaView>(`/api/fianzas/v1/fianzas/${contractId}/view`);
+
+/** El casero para la devolución (abre la disputa; decide el staff). */
+export async function stopFianza(contractId: string, landlord: string): Promise<string> {
+  const res = await api<UnsignedTransactionResponse>(`/api/fianzas/v1/fianzas/${contractId}/stop`, { signer: landlord });
+  return signAndIndex(res, { contractId });
+}
+
+type ClaimStep = UnsignedTransactionResponse & { step: "dispute" | "resolve" | "distribute" | "done" };
+
+/**
+ * Liberación a plazo (#115): pasado claimableAt sin aprobación del casero, el inquilino abre la disputa con su
+ * passkey y el servidor resuelve a su favor (con STAFF_SECRET) o deja el resolve pendiente para el staff.
+ * Devuelve el paso en el que ha quedado.
+ */
+export async function claimFianza(contractId: string, tenant: string): Promise<ClaimStep["step"]> {
+  const path = `/api/fianzas/v1/fianzas/${contractId}/claim-timeout`;
+  let r = await api<ClaimStep>(path, { signer: tenant });
+  if (r.step === "dispute") {
+    const disputeTxHash = await signAndIndex(r, { contractId });
+    r = await api<ClaimStep>(path, { signer: tenant, disputeTxHash });
+  }
+  return r.step;
+}

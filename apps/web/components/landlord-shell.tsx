@@ -32,7 +32,8 @@ const ICON: Record<FilterId, LucideIcon> = {
   settled: CircleCheckIcon,
 };
 
-type Props = { items: ListItem[]; filters: FilterInfo[]; summary: Summary; children: ReactNode };
+// `gate`: pantalla de entrada; sustituye a la lista (y al detalle) mientras no hay cuenta.
+type Props = { items: ListItem[]; filters: FilterInfo[]; summary: Summary; gate?: ReactNode; children: ReactNode };
 
 // macOS-style split view: sidebar (filters) · deposit list · detail pane, each scrolling on its own.
 // Under lg it becomes an iOS navigation stack: the list on /landlord, the pane everywhere else.
@@ -44,7 +45,7 @@ export function LandlordShell(props: Props) {
   );
 }
 
-function Shell({ items, filters, summary, children }: Props) {
+function Shell({ items, filters, summary, gate, children }: Props) {
   const { t } = useI18n();
   const l = t.landlord;
   const pathname = usePathname();
@@ -155,7 +156,9 @@ function Shell({ items, filters, summary, children }: Props) {
           </nav>
         </header>
 
-        {list.length === 0 ? (
+        {gate ? (
+          <div className="lg:hidden">{gate}</div>
+        ) : list.length === 0 ? (
           <Empty className="m-4">
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -181,13 +184,13 @@ function Shell({ items, filters, summary, children }: Props) {
                   <Link
                     href={`/landlord/deposits/${i.id}${query}`}
                     aria-current={current ? "page" : undefined}
-                    aria-label={l.rowLabel(i.id, i.amount, i.statusLabel)}
+                    aria-label={l.rowLabel(i.title, i.amount, i.statusLabel)}
                     className={cn(
                       "grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 rounded-xl px-3 py-3 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
                       current ? "bg-primary text-primary-foreground" : "hover:bg-muted",
                     )}
                   >
-                    <span className="font-semibold">{t.common.deposit(i.id)}</span>
+                    <span className="font-semibold">{i.title}</span>
                     <span className="text-right font-semibold tabular-nums">{i.amount}</span>
                     <StatusLine status={i.status} inverted={current} />
                     <span className={cn("text-right text-sm", current ? "text-primary-foreground" : i.needsAction ? "font-medium text-highlight-text" : "text-muted-foreground")}>
