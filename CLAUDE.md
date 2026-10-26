@@ -27,7 +27,8 @@ Hackatón de 28 horas, 4 personas, testnet.
 | P1 | Carlos · @CarlosJX7 | Escrow (fork de Trustless Work + DeFindex) y factory (plan B); cliente de la API de Trustless Work (plan A) | `contracts/escrow/`, `contracts/factory/`, `packages/trustless/` |
 | P2 | Jose · @jzelada97 | DeFi + infra + **API compatible con Trustless Work**, **integrador** | `apps/api/` (y su montaje en `apps/web/app/api/`), `contracts/mock-vault/`, `contracts/yield-adapter/`, `packages/bindings/` (generado), `scripts/deploy|e2e|fund/`, `deployments/` |
 | P3 | Ricardo · @RicardoMatosR | Onboarding sin cripto | `packages/wallet/` (passkeys + Relayer), `packages/anchor/` (SEP-24/SEP-45) |
-| P4 | Diego · @Diego-Matoss | UX/UI + pitch | `apps/web/` (casero e inquilino), `apps/backoffice/` (staff), `pitch/` |
+| P4 | Diego · @Diego-Matoss | Pitch | `pitch/` |
+| Libre | Todos (sin lock ni `cross-area`) | Front del producto desde el 26-oct (#105): casero e inquilino, y backoffice del staff. Repartidlo con issues asignados para no pisaros | `apps/web/` (salvo `apps/web/app/api/`, que es de P2), `apps/backoffice/` |
 | Compartido | Todos | Requiere **lock** | `docs/INTERFACES.md`, `.kiro/` (specs), `CLAUDE.md`, `NOTICE.md`, `harness/`, `.claude/`, `.github/`, archivos de configuración y dependencias en la raíz |
 
 `docs/` (salvo INTERFACES) y `README.md` son libres.

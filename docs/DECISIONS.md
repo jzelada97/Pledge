@@ -13,6 +13,12 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ---
 
+## 2026-10-26 11:00 · P4 pasa al pitch; el front queda libre para el equipo
+- **Decisión:** Diego (P4) se dedica al pitch (`pitch/`). `apps/web` y `apps/backoffice` pasan a ser **áreas libres** (`owner: "*"` en `harness/team.json`, como `docs/`): cualquiera las edita sin lock ni `cross-area`. `apps/web/app/api/` sigue siendo del área `api` (P2). El trabajo del front se reparte con issues asignados: conectar las pantallas del plan A con `apps/api` (#84), el flujo de la passkey del inquilino (#82) y el backoffice del staff (resolver y `distribute-yield`, #104).
+- **Estado de lo que deja Diego:** #100 (rediseño "Pledge") **ya está fusionado** (aprobado por P3, CI en verde). #96 (cabeceras de seguridad, cierra #77) sigue abierto y en conflicto con `main`; le falta el indexador de las passkeys en `connect-src` (`deployments.smartAccount.indexerUrl`, #107). Quien coja el front lo hereda: commits a su rama con su permiso, sin reescribir historia. El lock `deps` #98 lo libera él.
+- **Alternativa descartada:** un dueño concreto (P2) para el front, porque obligaría a P1 y P3 a usar `cross-area` en cada PR.
+- Decide: equipo (propuesta de P1 en #105; confirmado por Jose) · Implementa: P2
+
 ## 2026-10-26 10:40 · Modo MVP de la hackatón hasta la entrega (lo leen todas las IAs)
 - **Decisión:** desde ahora y hasta la entrega, el único objetivo es que **el camino feliz funcione en la demo** (testnet, plan A): crear la fianza, depositar con passkey, aprobar y devolver.
   - No se tratan casos raros ni extremos, ni se endurece más allá de lo que ya hay.
