@@ -1,6 +1,7 @@
-// Tipos de la API con rendimiento de Trustless Work: la API v1 de single-release más un vault de
-// DeFindex ("Guía de migración a TrustYield", 25-oct-2026; Swagger en <base>/docs). Las respuestas
-// de lectura están tomadas de escrows reales en testnet. Importes en decimales: `10` son 10 USDC.
+// Tipos de la API con rendimiento de Trustless Work: TW v2 (TrustYield, single-release con vault de
+// DeFindex) con API key de v1 ("Guía de migración a TrustYield", 25-oct-2026; Swagger en
+// <base>/docs). Las respuestas de lectura están tomadas de escrows reales en testnet. Importes en
+// decimales: `10` son 10 USDC.
 
 export interface TrustlineRef {
   symbol: string;
@@ -10,7 +11,7 @@ export interface TrustlineRef {
   contractId?: string;
 }
 
-/** Una dirección por rol (v1). */
+/** Una dirección por rol (así es el escrow de TrustYield). */
 export interface Roles {
   approver: string;
   serviceProvider: string;
