@@ -40,9 +40,13 @@ export function floorToUnits(value: number | string): bigint {
 
 function numberToPlain(value: number): string {
   if (!Number.isFinite(value)) throw new RangeError(`Importe no válido: ${value}`);
-  // toString da la representación decimal más corta que vuelve al mismo número; con
-  // importes de 7 decimales no usa notación exponencial salvo valores minúsculos.
+  // toString da la representación decimal más corta que vuelve al mismo número, pero por debajo
+  // de 1e-6 usa notación exponencial ("9.6e-7"). Se pasa a decimal desde el propio texto, sin
+  // redondear (toFixed redondearía hacia arriba). Negativos y exponentes positivos quedan tal
+  // cual y los rechaza el regex de quien llama.
   const text = value.toString();
-  if (!/e/i.test(text)) return text;
-  return value.toFixed(DECIMALS);
+  const exp = /^(\d)(?:\.(\d+))?e-(\d+)$/.exec(text);
+  if (!exp) return text;
+  const [, digit, rest = "", zeros] = exp;
+  return `0.${"0".repeat(Number(zeros) - 1)}${digit}${rest}`;
 }

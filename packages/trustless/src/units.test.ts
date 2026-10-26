@@ -36,4 +36,14 @@ describe("units", () => {
     expect(() => floorToUnits(-1)).toThrow(RangeError);
     expect(() => floorToUnits(Number.NaN)).toThrow(RangeError);
   });
+
+  it("importes por debajo de 1e-6 (notación exponencial) no se redondean hacia arriba", () => {
+    expect(floorToUnits(9.6e-7)).toBe(9n);
+    expect(floorToUnits(5e-8)).toBe(0n);
+    expect(floorToUnits(1e-7)).toBe(1n);
+    expect(fromDecimal(9e-7)).toBe(9n);
+    expect(() => fromDecimal(9.9e-7)).toThrow(RangeError);
+    expect(() => fromDecimal(-1e-7)).toThrow(RangeError);
+    expect(() => floorToUnits(1e21)).toThrow(RangeError);
+  });
 });

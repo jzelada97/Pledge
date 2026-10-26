@@ -78,10 +78,15 @@ export function createTrustlessClient(config: TrustlessClientConfig) {
     dispute: (body: DisputeBody) => write(`${SINGLE_RELEASE}/dispute-escrow`, body),
     resolveDispute: (body: DistributionsBody) => write(`${SINGLE_RELEASE}/resolve-dispute`, body),
     withdrawRemainingFunds: (body: DistributionsBody) => write(`${SINGLE_RELEASE}/withdraw-remaining-funds`, body),
-    getEscrows: (contractIds: string[]) =>
-      call<Escrow[]>("GET", `/helper/get-escrow-by-contract-ids?${arrayQuery("contractIds", contractIds)}&validateOnChain=true`),
-    getBalances: (addresses: string[]) =>
-      call<EscrowBalance[]>("GET", `/helper/get-multiple-escrow-balance?${arrayQuery("addresses", addresses)}`),
+    // Con la lista vacía la query quedaría mal formada: no se llama a la API.
+    getEscrows: async (contractIds: string[]): Promise<Escrow[]> =>
+      contractIds.length === 0
+        ? []
+        : call<Escrow[]>("GET", `/helper/get-escrow-by-contract-ids?${arrayQuery("contractIds", contractIds)}&validateOnChain=true`),
+    getBalances: async (addresses: string[]): Promise<EscrowBalance[]> =>
+      addresses.length === 0
+        ? []
+        : call<EscrowBalance[]>("GET", `/helper/get-multiple-escrow-balance?${arrayQuery("addresses", addresses)}`),
     vaultPosition: (contractId: string) =>
       call<VaultPosition>("GET", `${SINGLE_RELEASE}/vault-position?contractId=${encodeURIComponent(contractId)}`),
     sendTransaction: (signedXdr: string) => call<SendTransactionResponse>("POST", "/helper/send-transaction", { signedXdr }),

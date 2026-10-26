@@ -101,10 +101,16 @@ describe("planApproveRelease", () => {
 describe("parar y resolver", () => {
   const stopped = escrowFixture({ flags: { disputed: true, released: false, resolved: false } });
 
-  it("solo el casero para, y solo una fianza activa", () => {
+  it("solo el casero para, y solo una fianza activa que aún no ha aprobado", () => {
     expect(buildStopBody(escrowFixture(), LANDLORD)).toEqual({ contractId: ESCROW_ID, signer: LANDLORD });
     expect(code(() => buildStopBody(escrowFixture(), TENANT))).toBe("NOT_PARTY");
     expect(code(() => buildStopBody(escrowFixture({ balance: 0 }), LANDLORD))).toBe("NOT_FUNDED");
+    expect(code(() => buildStopBody(stopped, LANDLORD))).toBe("DISPUTED");
+    expect(
+      code(() => buildStopBody(escrowFixture({ flags: { disputed: false, released: true, resolved: false } }), LANDLORD)),
+    ).toBe("ALREADY_SETTLED");
+    // Si ya aprobó la devolución no puede echarse atrás.
+    expect(code(() => buildStopBody(escrowFixture({ milestones: approvedMilestone }), LANDLORD))).toBe("ALREADY_APPROVED");
   });
 
   it("resolver reparte el importe fondeado: deducción al casero, el resto al inquilino", () => {
@@ -132,21 +138,36 @@ describe("parar y resolver", () => {
       { address: LANDLORD, amount: 100 },
     ]);
     expect(buildResolveBody(lost, STAFF, 0n).distributions).toEqual([{ address: TENANT, amount: 450 }]);
-    // La deducción no puede superar lo que queda.
-    expect(code(() => buildResolveBody(lost, STAFF, 4_500_000_001n))).toBe("INVALID_AMOUNT");
+    // Si la deducción supera lo que queda, el casero se lleva el saldo; nunca más que la fianza.
+    expect(buildResolveBody(lost, STAFF, 4_800_000_000n).distributions).toEqual([{ address: LANDLORD, amount: 450 }]);
+    expect(code(() => buildResolveBody(lost, STAFF, 5_000_000_001n))).toBe("INVALID_AMOUNT");
     // Saldo con restos de coma flotante: se trunca a 7 decimales y se reparte como mucho eso.
     const noisy = { ...stopped, balance: 449.99999999999994 };
     expect(buildResolveBody(noisy, STAFF, 0n).distributions).toEqual([{ address: TENANT, amount: 449.9999999 }]);
   });
 
-  it("el rendimiento sobrante se reparte según la jurisdicción", () => {
-    expect(buildWithdrawYieldBody(stopped, STAFF, 893n, 5000).distributions).toEqual([
+  it("deducir el 100 % funciona aunque el vault redondee 1 stroop a la baja", () => {
+    const rounded = { ...stopped, balance: 499.9999999 };
+    expect(buildResolveBody(rounded, STAFF, 5_000_000_000n).distributions).toEqual([{ address: LANDLORD, amount: 499.9999999 }]);
+  });
+
+  it("sin saldo no hay nada que repartir", () => {
+    expect(code(() => buildResolveBody({ ...stopped, balance: 0 }, STAFF, 0n))).toBe("INVALID_AMOUNT");
+  });
+
+  it("el rendimiento sobrante se reparte según la jurisdicción, con la fianza ya liquidada", () => {
+    const resolved = escrowFixture({ flags: { disputed: true, released: false, resolved: true } });
+    expect(buildWithdrawYieldBody(resolved, STAFF, 893n, 5000).distributions).toEqual([
       { address: TENANT, amount: 0.0000446 },
       { address: LANDLORD, amount: 0.0000447 },
     ]);
-    expect(buildWithdrawYieldBody(stopped, STAFF, 893n, 0).distributions).toEqual([{ address: LANDLORD, amount: 0.0000893 }]);
-    expect(() => buildWithdrawYieldBody(stopped, STAFF, 1n, 10_001)).toThrow(RangeError);
-    expect(code(() => buildWithdrawYieldBody(stopped, TENANT, 1n, 0))).toBe("NOT_RESOLVER");
+    expect(buildWithdrawYieldBody(resolved, STAFF, 893n, 0).distributions).toEqual([{ address: LANDLORD, amount: 0.0000893 }]);
+    const released = escrowFixture({ flags: { disputed: false, released: true, resolved: false } });
+    expect(buildWithdrawYieldBody(released, STAFF, 893n, 0).distributions).toEqual([{ address: LANDLORD, amount: 0.0000893 }]);
+    expect(() => buildWithdrawYieldBody(resolved, STAFF, 1n, 10_001)).toThrow(RangeError);
+    expect(code(() => buildWithdrawYieldBody(resolved, TENANT, 1n, 0))).toBe("NOT_RESOLVER");
+    expect(code(() => buildWithdrawYieldBody(stopped, STAFF, 1n, 0))).toBe("NOT_SETTLED");
+    expect(code(() => buildWithdrawYieldBody(resolved, STAFF, 0n, 0))).toBe("INVALID_AMOUNT");
   });
 });
 
@@ -154,5 +175,9 @@ describe("isContractAddress", () => {
   it("distingue passkeys (C…) de cuentas clásicas (G…)", () => {
     expect(isContractAddress(TENANT)).toBe(true);
     expect(isContractAddress(LANDLORD)).toBe(false);
+    // Solo el formato StrKey completo: C + 55 caracteres base32.
+    expect(isContractAddress("C")).toBe(false);
+    expect(isContractAddress(`${TENANT}B`)).toBe(false);
+    expect(isContractAddress(TENANT.toLowerCase())).toBe(false);
   });
 });
