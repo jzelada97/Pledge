@@ -7,6 +7,10 @@ import { SIGNATURE_LEDGERS, sendBuilt } from "./built";
 import { WalletError, type WalletErrorCode } from "./errors";
 import type { SignAndSendOptions, SignBuiltOptions, UnsignedTransactionResponse, Wallet, WalletConfig } from "./types";
 
+// El kit exige saber con qué regla de la cuenta se firma ("contextRuleIds are required…", #82). Nuestras
+// cuentas se crean con una sola regla, la 0 (lo confirma el indexador: `context_rule_ids: [0]`).
+const CONTEXT_RULE_IDS = [0];
+
 function contractCodeOf(message: string): number | undefined {
   const m = /Error\(Contract, #(\d+)\)/.exec(message);
   return m ? Number(m[1]) : undefined;
@@ -81,7 +85,7 @@ export function createWallet(cfg: WalletConfig): Wallet {
         const { sequence } = await server.getLatestLedger();
         // El kit firma y envía en el mismo paso: no hay una fase "submitting" aparte que mostrar.
         opts.onPhase?.("signing");
-        const res = await kit.signAndSubmit(tx, { expiration: sequence + SIGNATURE_LEDGERS });
+        const res = await kit.signAndSubmit(tx, { expiration: sequence + SIGNATURE_LEDGERS, resolveContextRuleIds: () => CONTEXT_RULE_IDS });
         if (!res.success) throw res.error;
         return { hash: res.hash };
       } catch (e) {
@@ -98,7 +102,7 @@ export function createWallet(cfg: WalletConfig): Wallet {
             signer: address ?? "",
             cfg,
             latestLedger: async () => (await server.getLatestLedger()).sequence,
-            signAuthEntry: (entry, expiration) => kit.signAuthEntry(entry, { expiration }),
+            signAuthEntry: (entry, expiration) => kit.signAuthEntry(entry, { expiration, contextRuleIds: CONTEXT_RULE_IDS }),
             fetch: (input, init) => fetch(input, init),
           },
           opts,
