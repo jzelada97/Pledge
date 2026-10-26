@@ -76,7 +76,7 @@ contracts/          Rust/Soroban: our own escrow + factory (a Trustless Work for
 **Requirements:** Node 22+, pnpm 10 (`corepack enable` picks the pinned version), and Chrome or Edge for passkeys.
 
 ```bash
-git clone https://github.com/jzelada97/stellar-fianzas.git && cd stellar-fianzas
+git clone https://github.com/jzelada97/Pledge.git && cd Pledge
 pnpm install
 
 # Unit tests and type checks for every package
