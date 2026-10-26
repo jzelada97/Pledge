@@ -13,6 +13,17 @@ Una entrada por decisión, la más reciente arriba. Formato corto: qué se decid
 
 ---
 
+## 2026-10-26 10:40 · Modo MVP de la hackatón hasta la entrega (lo leen todas las IAs)
+- **Decisión:** desde ahora y hasta la entrega, el único objetivo es que **el camino feliz funcione en la demo** (testnet, plan A): crear la fianza, depositar con passkey, aprobar y devolver.
+  - No se tratan casos raros ni extremos, ni se endurece más allá de lo que ya hay.
+  - Un PR **solo se bloquea si rompe el camino feliz de la demo**. Lo demás (seguridad extra, validaciones, bordes) va como comentario o como issue "fuera del MVP", y el PR sigue adelante.
+  - Las revisiones son cortas: aprobar si funciona y la CI está en verde. No pedir cambios por cosas que no afectan a la demo.
+  - Prioridad: demo funcionando > aspecto visual > robustez.
+  - Ricardo (P3) trabaja en el front (`apps/web`), solo en la parte visual. Conectar la interfaz con la API es de Jose (P2).
+- **Alternativas descartadas:** seguir revisando y bloqueando por robustez. No da tiempo antes de la entrega.
+- **Motivo:** quedan unas 2 horas para la entrega y es testnet, sin dinero real.
+- **Decide:** P3 (Ricardo), con el equipo · **Revisa:** P2
+
 ## 2026-10-25 · Plan A: solo la API de Trustless Work; el escrow propio queda como plan B
 - **Decisión:** las fianzas serán escrows **Single-Release v2 de Trustless Work**, creados y operados **solo con sus endpoints** (`beta.api.trustlesswork.com`, cabecera `x-api-key`). Trustless Work añadirá el depósito en DeFindex sobre esa misma API. **Esperamos a que lo publiquen** antes de activar nada propio.
 - **Motivo:** recomendación de Trustless Work. Si usamos su API tal cual, cuando añadan DeFindex la migración es mínima; cada capa propia (contratos, una API que imite la suya, endpoints inventados) habría que migrarla después.
