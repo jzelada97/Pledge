@@ -4,6 +4,7 @@ import { TW_ESCROW_WASM_TESTNET, TW_FEE_ADDRESS_TESTNET, TW_YIELD_URL, type Escr
 import { createApp } from "./app";
 import type { Chain } from "./chain";
 import { deployments, loadConfigFromEnv } from "./config";
+import { Problem } from "./problem";
 
 const NET = deployments.networkPassphrase;
 const LANDLORD = Keypair.random().publicKey();
@@ -50,9 +51,11 @@ function fakeChain() {
   const chain: Chain = {
     async read(_contractId, fn) {
       if (fn === "get_escrow") {
-        if (!onChain) throw new Error("sin estado en cadena");
-        return onChain as never;
+        // Sin estado fijado, solo los roles (lo que mira la política de send-transaction, #91).
+        return (onChain ?? { roles: { platform: deployments.treasury } }) as never;
       }
+      // Un escrow de TW no está en nuestra factory: id_of devuelve NotFound (no es un fallo de red).
+      if (fn === "id_of") throw new Problem(502, "STELLAR_SIMULATION_FAILED", "La simulación falló", "Error(Contract, #1)", { contractError: 1 });
       throw new Error("el plan A no toca la factory");
     },
     async readRaw(_contractId, fn) {
