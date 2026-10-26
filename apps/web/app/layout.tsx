@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter, Montserrat } from "next/font/google";
 import { ThemeProvider } from "next-themes";
@@ -23,6 +24,7 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  await connection(); // render per request: the CSP nonce from proxy.ts only reaches dynamic pages
   const { locale } = await getI18n();
   return (
     // next-themes sets the `dark` class on <html> before paint, so the server markup can't match it

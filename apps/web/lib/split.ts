@@ -4,7 +4,8 @@ import type { Settlement } from "./types";
 // the real numbers always come from the chain (preview_settlement / Settlement).
 export function split(amount: bigint, total: bigint, deduction: bigint, platformBps: number, tenantBps: number): Settlement {
   const principalBack = total < amount ? total : amount;
-  const cut = deduction < principalBack ? deduction : principalBack;
+  // 0 ≤ deduction ≤ principal back: a negative input must never show the tenant more than 100 %
+  const cut = deduction < 0n ? 0n : deduction < principalBack ? deduction : principalBack;
   const yieldTotal = total > amount ? total - amount : 0n;
   const fee = (yieldTotal * BigInt(platformBps)) / 10000n;
   const net = yieldTotal - fee;
