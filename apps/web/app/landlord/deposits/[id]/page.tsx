@@ -86,7 +86,6 @@ export default async function DepositDetail({ params, searchParams }: PageProps<
           <Group title={x.stopped} footer={x.stoppedFooter}>
             <DetailList>
               <DetailRow label={x.stoppedOn} value={f.date(dispute.stopped_ts)} />
-              <DetailRow label={x.expertAssigned} value={dispute.expert_ref ? t.common.yes : t.common.notYet} />
             </DetailList>
           </Group>
         )}

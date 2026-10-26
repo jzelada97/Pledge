@@ -61,8 +61,8 @@ function row(id: number, status: Status, o: { amount: number; stoppedDaysAgo: nu
 
 export const QUEUE: StoppedRow[] = [
   row(4, "Stopped", { amount: 1100, stoppedDaysAgo: 1, accrued: 66.9 }),
-  row(5, "UnderReview", { amount: 700, stoppedDaysAgo: 6, accrued: 44.2, expert: true, report: true }),
-  row(8, "UnderReview", { amount: 900, stoppedDaysAgo: 28, accrued: 51.7, expert: true }),
+  row(5, "Stopped", { amount: 700, stoppedDaysAgo: 6, accrued: 44.2 }),
+  row(8, "Stopped", { amount: 900, stoppedDaysAgo: 28, accrued: 51.7 }),
 ];
 
 export function stoppedById(id: string): StoppedRow | undefined {
