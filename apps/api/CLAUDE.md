@@ -8,6 +8,9 @@ API compatible con la **Core API v2 de Trustless Work** más los endpoints propi
 - Lecturas: simulación contra la RPC con `readSource` como origen, caché en memoria (5 s estado, 60 s estrategias). La cadena manda.
 - `POST /stellar/send-transaction` envía XDR **ya firmados** y nunca patrocina. El patrocinio solo existe en `POST /fianzas/v1/relay` (`createRelayHandler` de `@fianzas/wallet/server`, dueño P3). El ramp simulado va en `/fianzas/v1/ramp` (`createSimRampHandler` de `@fianzas/anchor/server`, dueño P3).
 - Errores: RFC 9457 Problem Details (`src/problem.ts`). Las rutas de TW que no encajan responden `501 FZ_ENDPOINT_NOT_SUPPORTED` con `extensions.replacement`.
+- Límites (`src/limits.ts`, INTERFACES § 8.7): anónimo por IP, 120 lecturas/min y 30 builds o envíos/min → `429 TOO_MANY_REQUESTS`. `/relay` y `/ramp` tienen los suyos (P3). En memoria, por instancia.
+- API keys (`src/auth.ts`, security AUTH-9): `x-api-key: <id>.<secret>`; en `API_KEYS_JSON` solo va `sha256(secret)` y se compara en tiempo constante. Nunca en la URL (401). 10 fallos por IP y minuto → 429. La key da cupo propio (`rpm`) y necesita el scope de la ruta (`read`, `build`, `submit`; si no, 403). Los builds no exigen key. Generar una: `node apps/api/scripts/new-api-key.mjs <id> "<label>"`.
+- `TtlCache` tiene tope (1000 entradas): borra caducadas y después la más antigua.
 
 ## Comandos
 - `pnpm --filter @fianzas/api typecheck` · `pnpm --filter @fianzas/api test`

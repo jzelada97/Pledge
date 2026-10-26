@@ -2,8 +2,10 @@
 import { Hono } from "hono";
 import { createRelayHandler } from "@fianzas/wallet/server";
 import { createSimRampHandler } from "@fianzas/anchor/server";
+import { apiKeyAuth } from "./auth";
 import { createChain, TtlCache, type Chain } from "./chain";
-import { relayPolicy, type ApiConfig } from "./config";
+import { relayPolicy, type ApiConfig, type ApiKey } from "./config";
+import { rateLimits } from "./limits";
 import { notFound, Problem, problemResponse, serviceDisabled, validationError } from "./problem";
 import { fianzasRoutes } from "./routes/fianzas";
 import { stellarRoutes } from "./routes/stellar";
@@ -14,7 +16,7 @@ export interface AppDeps {
   now?: () => number;
 }
 
-type Env = { Variables: { traceId: string } };
+type Env = { Variables: { traceId: string; apiKey: ApiKey | null } };
 
 export function createApp(cfg: ApiConfig, deps: AppDeps = {}) {
   const chain = deps.chain ?? createChain(cfg);
@@ -26,6 +28,9 @@ export function createApp(cfg: ApiConfig, deps: AppDeps = {}) {
     await next();
     c.header("x-trace-id", c.get("traceId"));
   });
+  // Auth y límites (security AUTH-9, INTERFACES § 8.7): relay y ramp traen los suyos.
+  app.use("*", apiKeyAuth(cfg, deps.now));
+  app.use("*", rateLimits(deps.now));
 
   app.onError((err, c) => {
     if (err instanceof Problem) return problemResponse(c, err);
