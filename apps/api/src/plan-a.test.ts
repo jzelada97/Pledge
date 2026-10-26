@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Account, Asset, BASE_FEE, Contract, Keypair, Operation, StrKey, TransactionBuilder, scValToNative, xdr } from "@stellar/stellar-sdk";
-import { TW_ESCROW_WASM_TESTNET, TW_FEE_ADDRESS_TESTNET, TW_YIELD_URL, type Escrow } from "@fianzas/trustless";
+import { Account, Address, Asset, BASE_FEE, Contract, Keypair, Operation, StrKey, TransactionBuilder, scValToNative, xdr } from "@stellar/stellar-sdk";
+import { TW_DEPLOYER_TESTNET, TW_DEPLOY_FN, TW_ESCROW_WASM_TESTNET, TW_FEE_ADDRESS_TESTNET, TW_YIELD_URL, type Escrow } from "@fianzas/trustless";
 import { createApp } from "./app";
 import type { Chain } from "./chain";
 import { deployments, loadConfigFromEnv } from "./config";
@@ -10,7 +10,7 @@ const LANDLORD = Keypair.random().publicKey();
 const TENANT = StrKey.encodeContract(Buffer.alloc(32, 2)); // passkey
 const ESCROW = StrKey.encodeContract(Buffer.alloc(32, 7));
 const NEW_ESCROW = StrKey.encodeContract(Buffer.alloc(32, 8));
-const TW_DEPLOYER = StrKey.encodeContract(Buffer.alloc(32, 9));
+const OTHER_CONTRACT = StrKey.encodeContract(Buffer.alloc(32, 9));
 const treasuryKp = Keypair.random();
 
 function escrow(over: Partial<Escrow> = {}): Escrow {
@@ -32,10 +32,21 @@ function escrow(over: Partial<Escrow> = {}): Escrow {
   };
 }
 
-// Transacción de despliegue como la que devuelve TW: una llamada al deployer, con la tesorería como origen.
-function deployXdr(fn = "tw_new_single_release_escrow", source = deployments.treasury): string {
-  return new TransactionBuilder(new Account(source, "1"), { fee: BASE_FEE, networkPassphrase: NET })
-    .addOperation(new Contract(TW_DEPLOYER).call(fn))
+// Transacción de despliegue como la que devuelve TW (packages/trustless/CLAUDE.md): una llamada al deployer con
+// el firmante como origen, una sola auth de la cuenta origen y sin subinvocaciones.
+function deployXdr(
+  fn = TW_DEPLOY_FN,
+  source = deployments.treasury,
+  contract = TW_DEPLOYER_TESTNET,
+  opts: { fee?: string; subs?: xdr.SorobanAuthorizedInvocation[]; auth?: boolean } = {},
+): string {
+  const args = new xdr.InvokeContractArgs({ contractAddress: new Address(contract).toScAddress(), functionName: fn, args: [] });
+  const entry = new xdr.SorobanAuthorizationEntry({
+    credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+    rootInvocation: new xdr.SorobanAuthorizedInvocation({ function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(args), subInvocations: opts.subs ?? [] }),
+  });
+  return new TransactionBuilder(new Account(source, "1"), { fee: opts.fee ?? "170000", networkPassphrase: NET })
+    .addOperation(Operation.invokeHostFunction({ func: xdr.HostFunction.hostFunctionTypeInvokeContract(args), auth: opts.auth === false ? [] : [entry] }))
     .setTimeout(300)
     .build()
     .toXDR();
@@ -76,6 +87,9 @@ function fakeChain() {
   return { chain, builds };
 }
 
+/** Saldos que devuelve get-multiple-escrow-balance en la API simulada (por contractId). */
+const balances: Record<string, number> = {};
+
 /** API de TW simulada: registra las llamadas y responde con fixtures. */
 function fakeTw(escrows: Escrow[] = [escrow()]) {
   const calls: Array<{ method: string; path: string; body?: any; key: string | null }> = [];
@@ -102,11 +116,16 @@ function fakeTw(escrows: Escrow[] = [escrow()]) {
     if (url.pathname === "/helper/send-transaction") return Response.json({ status: "SUCCESS", contractId: NEW_ESCROW });
     if (url.pathname === "/indexer/update-from-txhash") return Response.json({ ok: true });
     // Acciones de cuentas G: TW devuelve el XDR con el firmante del rol como origen.
+    if (url.pathname === "/helper/get-multiple-escrow-balance") {
+      return Response.json(url.searchParams.getAll("addresses[]").map((a) => ({ address: a, balance: balances[a] ?? 0 })));
+    }
     const signerOf: Record<string, string | undefined> = {
       "/escrow/single-release/fund-escrow": body?.signer,
       "/escrow/single-release/approve-milestone": body?.approver,
       "/escrow/single-release/release-funds": body?.releaseSigner,
       "/escrow/single-release/dispute-escrow": body?.signer,
+      "/escrow/single-release/resolve-dispute": body?.disputeResolver,
+      "/escrow/single-release/withdraw-remaining-funds": body?.disputeResolver,
     };
     if (url.pathname in signerOf) {
       const source = signerOf[url.pathname];
@@ -243,6 +262,30 @@ describe("plan A: crear la fianza", () => {
     expect((await post("/fianzas/v1/fianzas/submit", { signedXdr: other.toXDR() })).status).toBe(403);
   });
 
+  it("no firma con la tesorería nada que no sea exactamente el despliegue de TW", async () => {
+    // La API de TW simulada devuelve, según el título, un XDR manipulado.
+    const cases: Array<[string, () => string]> = [
+      ["otro contrato", () => deployXdr(TW_DEPLOY_FN, deployments.treasury, OTHER_CONTRACT)],
+      ["otra función", () => deployXdr("update_escrow")],
+      ["otro origen", () => deployXdr(TW_DEPLOY_FN, LANDLORD)],
+      ["sin auth", () => deployXdr(TW_DEPLOY_FN, deployments.treasury, TW_DEPLOYER_TESTNET, { auth: false })],
+      ["auth con subinvocaciones", () => deployXdr(TW_DEPLOY_FN, deployments.treasury, TW_DEPLOYER_TESTNET, { subs: [new xdr.SorobanAuthorizedInvocation({ function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(new xdr.InvokeContractArgs({ contractAddress: new Address(deployments.token).toScAddress(), functionName: "transfer", args: [] })), subInvocations: [] })] })],
+      ["comisión desorbitada", () => deployXdr(TW_DEPLOY_FN, deployments.treasury, TW_DEPLOYER_TESTNET, { fee: "50000000" })],
+    ];
+    for (const [name, make] of cases) {
+      const { twFetch: base } = fakeTw();
+      const twFetch: typeof fetch = async (input, init) => (String(input).includes("/deployer/single-release") ? Response.json({ unsignedTransaction: make() }) : base(input, init));
+      const app = createApp(loadConfigFromEnv({ TW_API_KEY: "tw-key", TREASURY_SECRET: treasuryKp.secret() }, deployments), { chain: fakeChain().chain, now: () => 0, twFetch });
+      const res = await app.request("/api/fianzas/v1/fianzas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      expect([name, res.status, (await json(res)).code]).toEqual([name, 502, "FZ_TW_UNEXPECTED_TX"]);
+    }
+    // Y /submit tampoco reenvía a TW una llamada a otro contrato, aunque se llame igual.
+    const { post } = setup();
+    const other = TransactionBuilder.fromXDR(deployXdr(TW_DEPLOY_FN, treasuryKp.publicKey(), OTHER_CONTRACT), NET);
+    other.sign(treasuryKp);
+    expect((await post("/fianzas/v1/fianzas/submit", { signedXdr: other.toXDR() })).status).toBe(403);
+  });
+
   it("los errores de TW no filtran su cuerpo al cliente", async () => {
     const { get } = setup({ TW_API_KEY: "otra-key" }); // la API simulada responde 401
     const res = await get(`/fianzas/v1/fianzas/${ESCROW}/view`);
@@ -323,6 +366,90 @@ describe("plan A: fondear, aprobar, liberar y parar", () => {
     const pk = setup({}, [escrow({ roles: { ...escrow().roles, approver: TENANT, serviceProvider: TENANT, releaseSigner: LANDLORD, receiver: LANDLORD } })]);
     expect((await pk.post(`/fianzas/v1/fianzas/${ESCROW}/stop`, { signer: TENANT })).status).toBe(200);
     expect(pk.builds[0]).toMatchObject({ fn: "dispute_escrow", signer: TENANT });
+  });
+});
+
+describe("plan A: resolver y repartir el rendimiento (staff)", () => {
+  const STAFF = deployments.staff[0]!;
+  const stopped = () => escrow({ flags: { disputed: true, released: false, resolved: false } });
+  const resolved = () => escrow({ flags: { disputed: true, released: false, resolved: true } });
+
+  it("resolve reparte el importe fondeado: deducción al casero, resto al inquilino, vía resolve-dispute de TW", async () => {
+    const { post, calls } = setup({}, [stopped()]);
+    const res = await post(`/fianzas/v1/fianzas/${ESCROW}/resolve`, { resolver: STAFF, deduction: 100, stopJustified: true });
+    expect(res.status).toBe(200);
+    const b = await json(res);
+    expect(b.distributions).toEqual([
+      { address: TENANT, amount: "400.0000000" },
+      { address: LANDLORD, amount: "100.0000000" },
+    ]);
+    expect(TransactionBuilder.fromXDR(b.unsignedXdr, NET)).toMatchObject({ source: STAFF });
+    expect(calls.find((c) => c.path.includes("resolve-dispute"))!.body).toEqual({
+      contractId: ESCROW,
+      disputeResolver: STAFF,
+      distributions: [
+        { address: TENANT, amount: 400 },
+        { address: LANDLORD, amount: 100 },
+      ],
+    });
+  });
+
+  it("resolve rechaza deducción sin justificar, fianzas no paradas, resolvers ajenos y passkeys", async () => {
+    const { post } = setup({}, [stopped()]);
+    const incoherent = await post(`/fianzas/v1/fianzas/${ESCROW}/resolve`, { resolver: STAFF, deduction: 1, stopJustified: false });
+    expect([incoherent.status, (await json(incoherent)).code]).toEqual([422, "FZ_INCOHERENT_RESOLUTION"]);
+    const stranger = await post(`/fianzas/v1/fianzas/${ESCROW}/resolve`, { resolver: LANDLORD, deduction: 0, stopJustified: true });
+    expect((await json(stranger)).code).toBe("FZ_NOT_RESOLVER");
+    const passkey = await post(`/fianzas/v1/fianzas/${ESCROW}/resolve`, { resolver: TENANT, deduction: 0, stopJustified: true });
+    expect((await json(passkey)).code).toBe("FZ_SIGNER_MUST_BE_G");
+    const active = setup();
+    const notStopped = await active.post(`/fianzas/v1/fianzas/${ESCROW}/resolve`, { resolver: STAFF, deduction: 0, stopJustified: true });
+    expect((await json(notStopped)).code).toBe("FZ_NOT_DISPUTED");
+  });
+
+  it("distribute-yield reparte el sobrante exacto de getBalances con la comisión configurada", async () => {
+    balances[ESCROW] = 0.0001; // 1000 stroops de rendimiento tras resolver
+    try {
+      const { post, calls } = setup({ TW_PLATFORM_FEE_BPS: "2000" }, [resolved()]);
+      const res = await post(`/fianzas/v1/fianzas/${ESCROW}/distribute-yield`, { resolver: STAFF });
+      expect(res.status).toBe(200);
+      const b = await json(res);
+      expect(b).toMatchObject({ remaining: "0.0001000", tenantYieldBps: 0, platformFeeBps: 2000 });
+      expect(b.distributions).toEqual([
+        { address: deployments.treasury, amount: "0.0000200" },
+        { address: LANDLORD, amount: "0.0000800" },
+      ]);
+      expect(calls.find((c) => c.path.includes("withdraw-remaining-funds"))!.body.disputeResolver).toBe(STAFF);
+      // Con la fianza aún activa no hay nada que repartir.
+      const active = setup({ TW_PLATFORM_FEE_BPS: "2000" });
+      expect((await json(await active.post(`/fianzas/v1/fianzas/${ESCROW}/distribute-yield`, { resolver: STAFF }))).code).toBe("FZ_NOT_SETTLED");
+    } finally {
+      delete balances[ESCROW];
+    }
+  });
+
+  it("preview-settlement estima el reparto de una fianza parada con el saldo de hoy", async () => {
+    const { get } = setup({}, [stopped()]); // balance 500.0000893
+    const p = await json(await get(`/fianzas/v1/fianzas/${ESCROW}/preview-settlement?deduction=100`));
+    expect(p).toMatchObject({
+      estimated: true,
+      total: "500.0000893",
+      principalBack: "500.0000000",
+      deduction: "100.0000000",
+      yieldTotal: "0.0000893",
+      toTenant: "400.0000000",
+      toLandlord: "100.0000893", // Portugal: el rendimiento al casero
+      toTreasury: "0.0000000",
+    });
+    expect((await get(`/fianzas/v1/fianzas/${ESCROW}/preview-settlement?deduction=501`)).status).toBe(422);
+  });
+
+  it("lo que TW no tiene responde 501 con el sustituto", async () => {
+    const { post } = setup();
+    for (const a of ["assign-expert", "record-report", "claim-timeout", "claim-review-timeout"]) {
+      const res = await post(`/fianzas/v1/fianzas/${ESCROW}/${a}`, { signer: STAFF });
+      expect([a, res.status, (await json(res)).code]).toEqual([a, 501, "FZ_ENDPOINT_NOT_SUPPORTED"]);
+    }
   });
 });
 

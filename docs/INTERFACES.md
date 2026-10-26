@@ -453,6 +453,7 @@ Mismo bucle build → sign → submit, la misma `UnsignedTransactionResponse` y 
 | POST | `/fianzas/v1/fianzas/{contractId}/assign-expert` | Build de `assign_expert` |
 | POST | `/fianzas/v1/fianzas/{contractId}/record-report` | Build de `record_report` |
 | POST | `/fianzas/v1/fianzas/{contractId}/resolve` | Build de `resolve(deduction, stopJustified)`. Rechaza `stopJustified = false` con `deduction > 0` antes de simular (`FZ_INCOHERENT_RESOLUTION`) |
+| POST | `/fianzas/v1/fianzas/{contractId}/distribute-yield` | **Plan A (#102):** build de `withdraw_remaining_funds` de TW con el rendimiento que queda tras resolver, repartido por `buildWithdrawYieldBody` (`platformFeeBps` de `TW_PLATFORM_FEE_BPS`, después `tenantYieldBps`). Responde UTR + `{ remaining, distributions[], tenantYieldBps, platformFeeBps }`. En el plan B no existe (`settle` lo reparte todo) |
 | POST | `/fianzas/v1/fianzas/{contractId}/claim-timeout` | Build de `claim_after_timeout` (sin permisos; `signer` solo paga o patrocina) |
 | POST | `/fianzas/v1/fianzas/{contractId}/claim-review-timeout` | Build de `claim_after_review_timeout` |
 | GET | `/fianzas/v1/landlords/{address}/fianzas?cursor&limit&status` | `factory.list_by_landlord` + `get_fianzas` → `{ data: FianzaSummary[], hasMore, nextCursor }` |
@@ -536,6 +537,7 @@ Auth: **A** = anónima de la misma origin; **K** = `x-api-key`; **A/K** = cualqu
 | POST | `/fianzas/v1/fianzas/{contractId}/assign-expert` | A/K | `{ resolver, expertRef }` | UTR | staff (Freighter) | `escrow.assign_expert` |
 | POST | `/fianzas/v1/fianzas/{contractId}/record-report` | A/K | `{ resolver, reportHash }` | UTR | staff | `escrow.record_report` |
 | POST | `/fianzas/v1/fianzas/{contractId}/resolve` | A/K | `{ resolver, deduction, stopJustified }` | UTR | staff | `escrow.resolve` |
+| POST | `/fianzas/v1/fianzas/{contractId}/distribute-yield` | A/K | `{ resolver }` | UTR + `{ remaining, distributions[] }` | staff (G) | plan A: TW `withdraw_remaining_funds` (#102) |
 | POST | `/fianzas/v1/fianzas/{contractId}/claim-timeout` | A/K | `{ signer }` | UTR | cualquiera | `escrow.claim_after_timeout` |
 | POST | `/fianzas/v1/fianzas/{contractId}/claim-review-timeout` | A/K | `{ signer }` | UTR | cualquiera | `escrow.claim_after_review_timeout` |
 | GET | `/fianzas/v1/landlords/{address}/fianzas` | A/K | `cursor, limit, status` | `{ data: FianzaSummary[], hasMore, nextCursor }` | — | `factory.list_by_landlord` + `get_fianzas` |
