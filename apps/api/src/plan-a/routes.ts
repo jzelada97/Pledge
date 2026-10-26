@@ -12,6 +12,8 @@ import { Address, FeeBumpTransaction, Keypair, StrKey, TransactionBuilder, nativ
 import {
   FianzaError,
   RELEASE_MILESTONE,
+  TW_DEPLOYER_TESTNET,
+  TW_DEPLOY_FN,
   TW_ESCROW_WASM_TESTNET,
   TW_FEE_ADDRESS_TESTNET,
   TW_FEE_BPS,
@@ -20,6 +22,7 @@ import {
   buildResolveBody,
   buildStopBody,
   buildWithdrawYieldBody,
+  expectedPayout,
   floorToUnits,
   fromDecimal,
   planApproveRelease,
@@ -37,8 +40,9 @@ import { escrowView, termsView } from "./views";
 
 const STATE_TTL = 5_000;
 const MAX_PAGE = 50;
-const DEPLOY_FN = "tw_new_single_release_escrow";
 const SR = "/escrow/single-release/v2";
+// Los despliegues reales rondan 170 000 stroops de comisión; más de 1 XLM es sospechoso.
+const MAX_DEPLOY_FEE_STROOPS = 1_000_000n;
 
 const fundBody = z.object({ contractId: contractAddress, signer: accountAddress, amount: amountInput, inviteCode: z.string().optional() });
 const approveBody = z.object({ contractId: contractAddress, approver: accountAddress, milestoneIndexes: z.array(z.number().int()) });
@@ -103,11 +107,36 @@ function parseTx(xdr: string, passphrase: string): Transaction {
   return tx;
 }
 
+/** true si la única operación es la llamada al deployer de TW (`TW_DEPLOYER_TESTNET.tw_new_single_release_escrow`). */
 function isDeployTx(tx: Transaction): boolean {
   const op = tx.operations[0];
   if (tx.operations.length !== 1 || !op || op.type !== "invokeHostFunction") return false;
   if (op.func.switch().name !== "hostFunctionTypeInvokeContract") return false;
-  return op.func.invokeContract().functionName().toString() === DEPLOY_FN;
+  const ic = op.func.invokeContract();
+  return Address.fromScAddress(ic.contractAddress()).toString() === TW_DEPLOYER_TESTNET && ic.functionName().toString() === TW_DEPLOY_FN;
+}
+
+/**
+ * Antes de firmar con la clave de la tesorería, se comprueba que lo que devolvió TW es exactamente un
+ * despliegue (forma anotada en packages/trustless/CLAUDE.md): origen = tesorería, una llamada al
+ * deployer, una sola auth de la cuenta origen sin subinvocaciones y una comisión razonable. Si no,
+ * no se firma nada: la API nunca firma a ciegas lo que le manda un tercero.
+ */
+export function assertDeployToSign(tx: Transaction, treasury: string): void {
+  const bad = (why: string) => {
+    throw new Problem(502, "FZ_TW_UNEXPECTED_TX", "Trustless Work devolvió una transacción inesperada; no se ha firmado", undefined, undefined, `despliegue inesperado: ${why}`);
+  };
+  if (tx.source !== treasury) bad(`origen ${tx.source}`);
+  if (!isDeployTx(tx)) bad("operación distinta del despliegue");
+  const op = tx.operations[0];
+  const auth = op?.type === "invokeHostFunction" ? op.auth ?? [] : [];
+  const root = auth[0]?.rootInvocation();
+  if (auth.length !== 1 || !root) bad(`${auth.length} entradas de auth`);
+  if (auth[0]!.credentials().switch().name !== "sorobanCredentialsSourceAccount") bad("auth que no es de la cuenta origen");
+  if (root!.subInvocations().length !== 0) bad("auth con subinvocaciones");
+  const fn = root!.function();
+  if (fn.switch().name !== "sorobanAuthorizedFunctionTypeContractFn" || fn.contractFn().functionName().toString() !== TW_DEPLOY_FN) bad("la raíz de la auth no es el despliegue");
+  if (BigInt(tx.fee) > MAX_DEPLOY_FEE_STROOPS) bad(`comisión ${tx.fee}`);
 }
 
 export function planARoutes(cfg: ApiConfig, tw: TwClient | null, chain: Chain, cache: TtlCache) {
@@ -193,7 +222,9 @@ export function planARoutes(cfg: ApiConfig, tw: TwClient | null, chain: Chain, c
 
     const secret = cfg.trustless?.treasurySecret ?? null;
     if (signer === d.treasury && secret) {
-      // Firma en el servidor y envía por la API de TW, que devuelve la dirección del escrow nuevo.
+      // Firma en el servidor (solo si el XDR es el despliegue esperado) y envía por la API de TW, que
+      // devuelve la dirección del escrow nuevo.
+      assertDeployToSign(tx, d.treasury);
       tx.sign(Keypair.fromSecret(secret));
       const sent = await withTw(() => client.sendTransaction(tx.toXDR()));
       const contractId = sent.contractId ?? sent.escrow?.contractId ?? null;
@@ -215,7 +246,7 @@ export function planARoutes(cfg: ApiConfig, tw: TwClient | null, chain: Chain, c
     const client = requireTw();
     const b = await parseBody(c, submitBody);
     const tx = parseTx(b.signedXdr, cfg.networkPassphrase);
-    if (!isDeployTx(tx)) throw new Problem(403, "FZ_TX_NOT_ALLOWED", "Transacción no admitida", `Aquí solo se envía el despliegue (${DEPLOY_FN}); el resto va por /api/stellar/send-transaction`);
+    if (!isDeployTx(tx)) throw new Problem(403, "FZ_TX_NOT_ALLOWED", "Transacción no admitida", `Aquí solo se envía el despliegue (${TW_DEPLOY_FN} del deployer de TW); el resto va por /api/stellar/send-transaction`);
     if (tx.signatures.length === 0) throw new Problem(400, "STELLAR_TX_UNSIGNED", "La transacción no lleva firmas; la API nunca firma");
     const sent = await withTw(() => client.sendTransaction(b.signedXdr));
     return c.json({ contractId: sent.contractId ?? sent.escrow?.contractId ?? null, txHash: tx.hash().toString("hex"), status: sent.status ?? "SUCCESS" });
@@ -400,6 +431,12 @@ export function planARoutes(cfg: ApiConfig, tw: TwClient | null, chain: Chain, c
       toTenant: toDecimal(sumTo(resolve, e.roles.receiver) + sumTo(yieldSplit, e.roles.receiver)),
       toLandlord: toDecimal(sumTo(resolve, e.roles.serviceProvider) + sumTo(yieldSplit, e.roles.serviceProvider)),
       toTreasury: toDecimal(sumTo(yieldSplit, e.roles.platformAddress)),
+      // Lo que cobra cada uno: TW descuenta su 0,3 % de cada reparto (18 → 17,946).
+      afterTwFee: {
+        toTenant: toDecimal(expectedPayout(sumTo(resolve, e.roles.receiver), 0) + expectedPayout(sumTo(yieldSplit, e.roles.receiver), 0)),
+        toLandlord: toDecimal(expectedPayout(sumTo(resolve, e.roles.serviceProvider), 0) + expectedPayout(sumTo(yieldSplit, e.roles.serviceProvider), 0)),
+        toTreasury: toDecimal(expectedPayout(sumTo(yieldSplit, e.roles.platformAddress), 0)),
+      },
       twFeeBps: TW_FEE_BPS, // TW descuenta además su 0,3 % de cada retiro
       tenantYieldBps,
       platformFeeBps,

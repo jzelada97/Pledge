@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Account, Asset, BASE_FEE, Contract, Keypair, Operation, StrKey, TransactionBuilder, scValToNative, xdr } from "@stellar/stellar-sdk";
-import { TW_ESCROW_WASM_TESTNET, TW_FEE_ADDRESS_TESTNET, TW_YIELD_URL, type Escrow } from "@fianzas/trustless";
+import { Account, Address, Asset, BASE_FEE, Contract, Keypair, Operation, StrKey, TransactionBuilder, scValToNative, xdr } from "@stellar/stellar-sdk";
+import { TW_DEPLOYER_TESTNET, TW_DEPLOY_FN, TW_ESCROW_WASM_TESTNET, TW_FEE_ADDRESS_TESTNET, TW_YIELD_URL, type Escrow } from "@fianzas/trustless";
 import { createApp } from "./app";
 import type { Chain } from "./chain";
 import { deployments, loadConfigFromEnv } from "./config";
@@ -10,7 +10,7 @@ const LANDLORD = Keypair.random().publicKey();
 const TENANT = StrKey.encodeContract(Buffer.alloc(32, 2)); // passkey
 const ESCROW = StrKey.encodeContract(Buffer.alloc(32, 7));
 const NEW_ESCROW = StrKey.encodeContract(Buffer.alloc(32, 8));
-const TW_DEPLOYER = StrKey.encodeContract(Buffer.alloc(32, 9));
+const OTHER_CONTRACT = StrKey.encodeContract(Buffer.alloc(32, 9));
 const treasuryKp = Keypair.random();
 
 function escrow(over: Partial<Escrow> = {}): Escrow {
@@ -32,10 +32,21 @@ function escrow(over: Partial<Escrow> = {}): Escrow {
   };
 }
 
-// Transacción de despliegue como la que devuelve TW: una llamada al deployer, con la tesorería como origen.
-function deployXdr(fn = "tw_new_single_release_escrow", source = deployments.treasury): string {
-  return new TransactionBuilder(new Account(source, "1"), { fee: BASE_FEE, networkPassphrase: NET })
-    .addOperation(new Contract(TW_DEPLOYER).call(fn))
+// Transacción de despliegue como la que devuelve TW (packages/trustless/CLAUDE.md): una llamada al deployer con
+// el firmante como origen, una sola auth de la cuenta origen y sin subinvocaciones.
+function deployXdr(
+  fn = TW_DEPLOY_FN,
+  source = deployments.treasury,
+  contract = TW_DEPLOYER_TESTNET,
+  opts: { fee?: string; subs?: xdr.SorobanAuthorizedInvocation[]; auth?: boolean } = {},
+): string {
+  const args = new xdr.InvokeContractArgs({ contractAddress: new Address(contract).toScAddress(), functionName: fn, args: [] });
+  const entry = new xdr.SorobanAuthorizationEntry({
+    credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+    rootInvocation: new xdr.SorobanAuthorizedInvocation({ function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(args), subInvocations: opts.subs ?? [] }),
+  });
+  return new TransactionBuilder(new Account(source, "1"), { fee: opts.fee ?? "170000", networkPassphrase: NET })
+    .addOperation(Operation.invokeHostFunction({ func: xdr.HostFunction.hostFunctionTypeInvokeContract(args), auth: opts.auth === false ? [] : [entry] }))
     .setTimeout(300)
     .build()
     .toXDR();
@@ -247,6 +258,30 @@ describe("plan A: crear la fianza", () => {
     expect([notDeploy.status, (await json(notDeploy)).code]).toEqual([403, "FZ_TX_NOT_ALLOWED"]);
     // Otra función del deployer tampoco.
     const other = TransactionBuilder.fromXDR(deployXdr("update_escrow"), NET);
+    other.sign(treasuryKp);
+    expect((await post("/fianzas/v1/fianzas/submit", { signedXdr: other.toXDR() })).status).toBe(403);
+  });
+
+  it("no firma con la tesorería nada que no sea exactamente el despliegue de TW", async () => {
+    // La API de TW simulada devuelve, según el título, un XDR manipulado.
+    const cases: Array<[string, () => string]> = [
+      ["otro contrato", () => deployXdr(TW_DEPLOY_FN, deployments.treasury, OTHER_CONTRACT)],
+      ["otra función", () => deployXdr("update_escrow")],
+      ["otro origen", () => deployXdr(TW_DEPLOY_FN, LANDLORD)],
+      ["sin auth", () => deployXdr(TW_DEPLOY_FN, deployments.treasury, TW_DEPLOYER_TESTNET, { auth: false })],
+      ["auth con subinvocaciones", () => deployXdr(TW_DEPLOY_FN, deployments.treasury, TW_DEPLOYER_TESTNET, { subs: [new xdr.SorobanAuthorizedInvocation({ function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(new xdr.InvokeContractArgs({ contractAddress: new Address(deployments.token).toScAddress(), functionName: "transfer", args: [] })), subInvocations: [] })] })],
+      ["comisión desorbitada", () => deployXdr(TW_DEPLOY_FN, deployments.treasury, TW_DEPLOYER_TESTNET, { fee: "50000000" })],
+    ];
+    for (const [name, make] of cases) {
+      const { twFetch: base } = fakeTw();
+      const twFetch: typeof fetch = async (input, init) => (String(input).includes("/deployer/single-release") ? Response.json({ unsignedTransaction: make() }) : base(input, init));
+      const app = createApp(loadConfigFromEnv({ TW_API_KEY: "tw-key", TREASURY_SECRET: treasuryKp.secret() }, deployments), { chain: fakeChain().chain, now: () => 0, twFetch });
+      const res = await app.request("/api/fianzas/v1/fianzas", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      expect([name, res.status, (await json(res)).code]).toEqual([name, 502, "FZ_TW_UNEXPECTED_TX"]);
+    }
+    // Y /submit tampoco reenvía a TW una llamada a otro contrato, aunque se llame igual.
+    const { post } = setup();
+    const other = TransactionBuilder.fromXDR(deployXdr(TW_DEPLOY_FN, treasuryKp.publicKey(), OTHER_CONTRACT), NET);
     other.sign(treasuryKp);
     expect((await post("/fianzas/v1/fianzas/submit", { signedXdr: other.toXDR() })).status).toBe(403);
   });
