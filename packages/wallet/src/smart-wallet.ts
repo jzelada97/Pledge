@@ -73,15 +73,16 @@ export function createWallet(cfg: WalletConfig): Wallet {
     async signAndSend(tx: contract.AssembledTransaction<unknown>, opts: SignAndSendOptions = {}) {
       if (!address) throw new WalletError("NOT_CONNECTED");
       opts.onPhase?.("verifying");
-      const op = tx.built?.operations[0];
-      if (!op || op.type !== "invokeHostFunction") throw new WalletError("AUTH_MISMATCH", "no es una llamada a contrato");
+      const ops = tx.built?.operations ?? [];
+      const op = ops[0];
+      if (ops.length !== 1 || op.type !== "invokeHostFunction") throw new WalletError("AUTH_MISMATCH", "se esperaba una sola llamada a contrato");
       await verifyAuthTree({ func: op.func, auth: op.auth ?? [] }, address, cfg, opts);
       try {
         const { sequence } = await server.getLatestLedger();
+        // El kit firma y envía en el mismo paso: no hay una fase "submitting" aparte que mostrar.
         opts.onPhase?.("signing");
         const res = await kit.signAndSubmit(tx, { expiration: sequence + SIGNATURE_LEDGERS });
         if (!res.success) throw res.error;
-        opts.onPhase?.("submitting");
         return { hash: res.hash };
       } catch (e) {
         throw toWalletError(e);

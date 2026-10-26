@@ -37,12 +37,15 @@ function fundBuild(validUntilLedger = LATEST + 60, subs?: xdr.SorobanAuthorizedI
   };
 }
 
+// Importe que ve el usuario al fondear (WEB-3).
+const FUND = { expectedTransferAmount: 5n };
+
 describe("sendBuilt", () => {
   it("verifica, firma la entrada del firmante con la expiración acotada y la envía por el relay", async () => {
     const { d, signAuthEntry, fetchMock } = deps();
     const phases: string[] = [];
     const build = fundBuild(LATEST + 500); // la API propone más de 60: se acota
-    await expect(sendBuilt(build, d, { onPhase: (p) => phases.push(p) })).resolves.toEqual({ hash: "h1" });
+    await expect(sendBuilt(build, d, { ...FUND, onPhase: (p) => phases.push(p) })).resolves.toEqual({ hash: "h1" });
     expect(signAuthEntry).toHaveBeenCalledTimes(1);
     expect(signAuthEntry.mock.calls[0][1]).toBe(LATEST + 60);
     const [path, init] = fetchMock.mock.calls[0];
@@ -54,14 +57,14 @@ describe("sendBuilt", () => {
   it("no firma ni envía un build que no supera WEB-3", async () => {
     const { d, signAuthEntry, fetchMock } = deps();
     const evil = fundBuild(LATEST + 60, [transfer(token, tenant, randomContract(), 5n)]);
-    await expect(sendBuilt(evil, d)).rejects.toMatchObject({ code: "AUTH_MISMATCH" });
+    await expect(sendBuilt(evil, d, FUND)).rejects.toMatchObject({ code: "AUTH_MISMATCH" });
     expect(signAuthEntry).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rechaza builds caducados", async () => {
     const { d } = deps();
-    await expect(sendBuilt(fundBuild(LATEST), d)).rejects.toMatchObject({ code: "TX_FAILED" });
+    await expect(sendBuilt(fundBuild(LATEST), d, FUND)).rejects.toMatchObject({ code: "TX_FAILED" });
   });
 
   it("traduce los errores del relay", async () => {
@@ -73,7 +76,7 @@ describe("sendBuilt", () => {
       [502, "TX_FAILED", "TX_FAILED"],
     ] as const) {
       const { d } = deps({ fetch: (async () => Response.json({ success: false, code }, { status })) as unknown as typeof fetch });
-      await expect(sendBuilt(fundBuild(), d)).rejects.toSatisfy((e: unknown) => e instanceof WalletError && e.code === expected);
+      await expect(sendBuilt(fundBuild(), d, FUND)).rejects.toSatisfy((e: unknown) => e instanceof WalletError && e.code === expected);
     }
   });
 
