@@ -11,6 +11,8 @@ export class Problem extends Error {
     readonly title: string,
     readonly detail?: string,
     readonly extensions?: Record<string, unknown>,
+    /** Detalle interno (respuesta cruda de la RPC, etc.): solo al log con el traceId, nunca al cliente (API-12). */
+    readonly internal?: string,
   ) {
     super(detail ?? title);
     this.name = "Problem";

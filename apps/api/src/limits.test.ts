@@ -31,6 +31,9 @@ function fakeChain() {
     async latestLedger() {
       return 1000;
     },
+    async wasmHashOf() {
+      return null;
+    },
   };
   return { chain, reads };
 }

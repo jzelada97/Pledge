@@ -2,15 +2,17 @@
 // firmar (INTERFACES § 8, UnsignedTransactionResponse) y envío de transacciones ya firmadas.
 // La cadena es la fuente de verdad; la caché solo ahorra RPC.
 import {
+  Account,
   BASE_FEE,
   Contract,
+  Operation,
   StrKey,
   TransactionBuilder,
   rpc,
   scValToNative,
   xdr,
-  type Operation,
 } from "@stellar/stellar-sdk";
+import { createChainLookups } from "@fianzas/wallet/server";
 import type { ApiConfig } from "./config";
 import { Problem, validationError } from "./problem";
 
@@ -31,13 +33,12 @@ export interface Built extends UnsignedTransactionResponse {
   result: unknown;
 }
 
-function simulationProblem(error: string, contractId: string, fn: string): Problem {
+// API-12: al cliente solo el número de error del contrato y un texto genérico; la respuesta cruda de la
+// RPC va al log con el traceId (Problem.internal).
+export function simulationProblem(error: string, contractId: string, fn: string): Problem {
   const m = /Error\(Contract, #(\d+)\)/.exec(error);
-  return new Problem(502, "STELLAR_SIMULATION_FAILED", "La simulación falló", error.slice(0, 500), {
-    contractId,
-    fn,
-    ...(m ? { contractError: Number(m[1]) } : {}),
-  });
+  const detail = m ? `El contrato rechazó ${fn} (error #${m[1]})` : `La simulación de ${fn} falló`;
+  return new Problem(502, "STELLAR_SIMULATION_FAILED", "La simulación falló", detail, { contractId, fn, ...(m ? { contractError: Number(m[1]) } : {}) }, error);
 }
 
 export function toDecimal(stroops: bigint | string | number, decimals = 7): string {
@@ -97,10 +98,13 @@ export interface Chain {
   build(contractId: string, fn: string, args: xdr.ScVal[], signer: string): Promise<Built>;
   send(signedXdr: string): Promise<{ txHash: string; ledger: number | null; status: string }>;
   latestLedger(): Promise<number>;
+  // Hash (hex) del wasm de un contrato, o null si no existe o no es wasm. Para reconocer escrows de TW.
+  wasmHashOf(contractId: string): Promise<string | null>;
 }
 
 export function createChain(cfg: ApiConfig): Chain {
   const server = new rpc.Server(cfg.rpcUrl, { allowHttp: cfg.rpcUrl.startsWith("http://") });
+  const lookups = createChainLookups(cfg.rpcUrl, cfg.networkPassphrase);
 
   async function simulateRead(contractId: string, fn: string, args: xdr.ScVal[]): Promise<xdr.ScVal> {
     const source = await server.getAccount(cfg.readSource);
@@ -145,7 +149,20 @@ export function createChain(cfg: ApiConfig): Chain {
       const sim = await server.simulateTransaction(tx);
       if (rpc.Api.isSimulationError(sim)) throw simulationProblem(sim.error, contractId, fn);
       if (rpc.Api.isSimulationRestore(sim)) {
-        throw new Problem(409, "STELLAR_STATE_ARCHIVED", "El estado del contrato está archivado", "Hay que restaurarlo antes de operar", { contractId });
+        // Como TW: se adjunta la transacción de restauración (misma cuenta y secuencia que la operación).
+        const pre = sim.restorePreamble;
+        const restore = new TransactionBuilder(new Account(tx.source, (BigInt(tx.sequence) - 1n).toString()), {
+          fee: pre.minResourceFee,
+          networkPassphrase: cfg.networkPassphrase,
+        })
+          .setSorobanData(pre.transactionData.build())
+          .addOperation(Operation.restoreFootprint({}))
+          .setTimeout(SIGNATURE_LEDGERS * 5)
+          .build();
+        throw new Problem(409, "STELLAR_STATE_ARCHIVED", "El estado del contrato está archivado", "Firma y envía restoreXdr antes de repetir la operación", {
+          contractId,
+          restoreXdr: restore.toXDR(),
+        });
       }
       const prepared = rpc.assembleTransaction(tx, sim).build();
       const built: Built = {
@@ -195,6 +212,10 @@ export function createChain(cfg: ApiConfig): Chain {
         }
       }
       return { txHash: res.hash, ledger: null, status: "PENDING" };
+    },
+
+    wasmHashOf(contractId: string) {
+      return lookups.wasmHashOf(contractId);
     },
 
     async latestLedger() {

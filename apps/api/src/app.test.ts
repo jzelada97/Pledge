@@ -42,6 +42,9 @@ const fakeChain: Chain = {
   async latestLedger() {
     return 1000;
   },
+  async wasmHashOf() {
+    return null;
+  },
 };
 
 const cfg = loadConfigFromEnv({}, deployments); // sin RELAYER_API_KEY ni RAMP_FAUCET_SECRET
@@ -86,13 +89,14 @@ describe("esqueleto de la API", () => {
     const sin = await app.request("/api/stellar/send-transaction", { method: "POST", body: "{}", headers: { "content-type": "application/json" } });
     expect(sin.status).toBe(400);
     expect((await json(sin)).code).toBe("VALIDATION_ERROR");
-    const ok = await app.request("/api/stellar/send-transaction", {
+    // Un XDR que no se puede leer no llega a la RPC (los casos válidos están en send-policy.test.ts).
+    const malo = await app.request("/api/stellar/send-transaction", {
       method: "POST",
       body: JSON.stringify({ signedXdr: "AAAA" }),
       headers: { "content-type": "application/json" },
     });
-    expect(ok.status).toBe(200);
-    expect((await json(ok)).code).toBe("STELLAR_TX_SUBMITTED");
+    expect(malo.status).toBe(400);
+    expect((await json(malo)).code).toBe("STELLAR_TX_UNPARSEABLE");
   });
 
   it("config sale de deployments mientras no hay factory", async () => {

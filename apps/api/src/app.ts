@@ -18,13 +18,17 @@ export interface AppDeps {
 
 type Env = { Variables: { traceId: string; apiKey: ApiKey | null } };
 
+const TRACE_ID_RE = /^[\w-]{1,64}$/;
+
 export function createApp(cfg: ApiConfig, deps: AppDeps = {}) {
   const chain = deps.chain ?? createChain(cfg);
   const cache = new TtlCache(deps.now);
   const app = new Hono<Env>().basePath("/api");
 
   app.use("*", async (c, next) => {
-    c.set("traceId", c.req.header("x-trace-id") ?? crypto.randomUUID());
+    // Se acepta el trace-id del cliente solo si es inofensivo para logs y cabeceras (API-12).
+    const given = c.req.header("x-trace-id");
+    c.set("traceId", given && TRACE_ID_RE.test(given) ? given : crypto.randomUUID());
     await next();
     c.header("x-trace-id", c.get("traceId"));
   });
@@ -33,7 +37,10 @@ export function createApp(cfg: ApiConfig, deps: AppDeps = {}) {
   app.use("*", rateLimits(deps.now));
 
   app.onError((err, c) => {
-    if (err instanceof Problem) return problemResponse(c, err);
+    if (err instanceof Problem) {
+      if (err.internal) console.error(`[api ${c.get("traceId")}] ${err.code}: ${err.internal}`);
+      return problemResponse(c, err);
+    }
     if (err instanceof SyntaxError) return problemResponse(c, validationError("JSON mal formado"));
     console.error(`[api ${c.get("traceId")}]`, err);
     return problemResponse(c, new Problem(500, "INTERNAL_ERROR", "Error interno"));
@@ -51,7 +58,7 @@ export function createApp(cfg: ApiConfig, deps: AppDeps = {}) {
     }),
   );
 
-  app.route("/", stellarRoutes(chain));
+  app.route("/", stellarRoutes(cfg, chain, cache));
   app.route("/", fianzasRoutes(cfg, chain, cache));
   app.route("/", twRoutes(cfg, chain, cache));
 

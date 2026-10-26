@@ -82,6 +82,9 @@ function setup(opts: Opts = {}) {
     async latestLedger() {
       return 1000;
     },
+    async wasmHashOf() {
+      return null;
+    },
   };
   const app = createApp(loadConfigFromEnv({}, deployments), { chain });
   const post = (path: string, body: unknown) =>
